@@ -1,0 +1,56 @@
+<aura:component implements="forceCommunity:availableForAllPageTypes,flexipage:availableForAllPageTypes" 
+                access="global">
+    
+    <aura:attribute name="accountId" type="String" />
+    <aura:attribute name="memberPlanId" type="String" />
+    <aura:attribute name="isLoading" type="Boolean" default="true" />
+    <aura:attribute name="errorMessage" type="String" />
+    
+    <aura:handler name="init" value="{!this}" action="{!c.doInit}" />
+    
+    <!-- Force:recordData to query MemberPlan directly -->
+    <aura:if isTrue="{!not(empty(v.accountId))}">
+        <force:recordData aura:id="memberPlanService"
+                         targetFields="{!v.memberPlanRecord}"
+                         fields="Id,Name,MemberId"
+                         recordUpdated="{!c.handleRecordUpdated}"
+                         mode="VIEW" />
+    </aura:if>
+    
+    <div class="slds-card" style="min-height: 600px;">
+        <!-- Loading Spinner -->
+        <aura:if isTrue="{!v.isLoading}">
+            <div style="padding: 100px; text-align: center;">
+                <lightning:spinner alternativeText="Loading insurance details..." variant="brand" size="large"/>
+                <p style="margin-top: 20px; color: #706e6b;">Loading insurance details...</p>
+            </div>
+        </aura:if>
+        
+        <!-- Error Message -->
+        <aura:if isTrue="{!and(not(v.isLoading), not(empty(v.errorMessage)))}">
+            <div class="slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_error" 
+                 role="alert" 
+                 style="margin: 20px;">
+                <span class="slds-assistive-text">Error</span>
+                <h2 class="slds-text-heading_small">{!v.errorMessage}</h2>
+            </div>
+        </aura:if>
+        
+        <!-- Show Insurance Card when MemberPlan is loaded -->
+        <aura:if isTrue="{!and(not(v.isLoading), not(empty(v.memberPlanId)))}">
+            <medicalcoverage:EligibilityBenefitCard recordId="{!v.memberPlanId}" />
+        </aura:if>
+        
+        <!-- No MemberPlan Found -->
+        <aura:if isTrue="{!and(not(v.isLoading), empty(v.memberPlanId), empty(v.errorMessage))}">
+            <div class="slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_warning" 
+                 role="alert" 
+                 style="margin: 20px;">
+                <span class="slds-assistive-text">Warning</span>
+                <h2 class="slds-text-heading_small">No Member Plan found for this Account</h2>
+                <p style="margin-top: 10px;">Please verify the Account ID and try again.</p>
+            </div>
+        </aura:if>
+    </div>
+    
+</aura:component>

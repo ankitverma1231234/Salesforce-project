@@ -1,0 +1,90 @@
+<template>
+    <lightning-card icon-name="standard:file" title="AI File Preview">
+
+        <!-- Loading Spinner -->
+        <template if:true={isLoading}>
+            <div class="spinner-container slds-p-around_large">
+                <lightning-spinner alternative-text="Loading file preview..." size="medium"></lightning-spinner>
+                <p class="slds-text-body_small slds-text-color_weak slds-m-top_medium slds-text-align_center">
+                    Loading file...
+                </p>
+            </div>
+        </template>
+
+        <!-- Error Messaguhje -->
+        <template if:true={error}>
+            <div class="slds-p-around_medium slds-text-color_error slds-align_absolute-center">
+                <lightning-icon icon-name="utility:error" size="x-small" class="slds-m-right_x-small"></lightning-icon>
+                {error}
+            </div>
+        </template>
+
+        <template if:false={isLoading}>
+            <template if:false={error}>
+
+                <!-- No File Found -->
+                <template if:false={hasFile}>
+                    <div class="slds-p-around_medium slds-align_absolute-center">
+                        <div class="slds-text-align_center">
+                            <lightning-icon icon-name="utility:info" size="small" class="slds-m-bottom_x-small"></lightning-icon>
+                            <p class="slds-text-body_regular slds-text-color_weak slds-m-top_x-small">
+                                No related file available.
+                            </p>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- File Found -->
+                <template if:true={hasFile}>
+
+                    <!-- Previewable File — Inline iframe -->
+                    <template if:true={isPreviewable}>
+                        <div class="preview-toolbar slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-p-horizontal_medium slds-p-vertical_x-small">
+                            <span class="slds-text-body_small slds-text-color_weak slds-truncate" title={fileTitle}>
+                                {fileTitle}
+                            </span>
+                            <lightning-button
+                                label="Open Full Preview"
+                                variant="neutral"
+                                icon-name="utility:preview"
+                                onclick={handleOpenFullPreview}>
+                            </lightning-button>
+                        </div>
+                        <div class="preview-container">
+                            <iframe
+                                src={previewUrl}
+                                title={fileTitle}
+                                class="preview-iframe">
+                            </iframe>
+                        </div>
+                    </template>
+
+                    <!-- Non-Previewable File -->
+                    <template if:false={isPreviewable}>
+                        <div class="slds-p-around_medium slds-align_absolute-center">
+                            <div class="slds-text-align_center">
+                                <lightning-icon icon-name="utility:warning" size="small" class="slds-m-bottom_x-small"></lightning-icon>
+                                <p class="slds-text-body_regular slds-text-color_weak slds-m-top_x-small">
+                                    Preview not available for this file type.
+                                </p>
+                                <p class="slds-text-body_small slds-text-color_weak slds-m-top_xx-small">
+                                    {fileTitle}
+                                </p>
+                                <lightning-button
+                                    label="Open Full Preview"
+                                    variant="brand"
+                                    icon-name="utility:preview"
+                                    onclick={handleOpenFullPreview}
+                                    class="slds-m-top_small">
+                                </lightning-button>
+                            </div>
+                        </div>
+                    </template>
+
+                </template>
+
+            </template>
+        </template>
+
+    </lightning-card>
+</template>

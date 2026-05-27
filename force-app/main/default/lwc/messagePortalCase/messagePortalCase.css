@@ -1,0 +1,68 @@
+:host {
+    display: block;
+    position: relative;
+}
+
+/* Card polish */
+.portal-card {
+    --slds-c-card-radius-border: 12px;
+}
+
+/* Header */
+.header-section {
+    text-align: center;
+}
+
+.header-icon {
+    margin-bottom: 0.5rem;
+}
+
+.header-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.header-subtitle {
+    font-size: 0.85rem;
+    color: #6b6d70;
+}
+
+/* Sections */
+.section-box {
+    background: #f9fafb;
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+/* Uploaded files */
+.uploaded-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.file-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: #eef4ff;
+    border-radius: 16px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+}
+
+/* Footer */
+.footer-actions {
+    text-align: right;
+}
+
+/* Spinner */
+.spinner-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.65);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

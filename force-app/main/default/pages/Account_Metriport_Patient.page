@@ -1,0 +1,9 @@
+<apex:page standardController="Account">
+    <apex:canvasApp developerName="Metriport"
+        parameters="{patient_id: 'account_{!Account.Id}', client_id: '3MVG9ZM6Cuht.9Ss0BQRbTxEsija6LxEUGp_DmUZ_D9PA7OQDsYjg4.9zFMLxso0S8eaH1UXK1BOyp9Z9TeOl'}"
+        width="100%"
+        maxWidth="infinite"
+        maxHeight="infinite"
+        scrolling="auto"
+    />
+</apex:page>

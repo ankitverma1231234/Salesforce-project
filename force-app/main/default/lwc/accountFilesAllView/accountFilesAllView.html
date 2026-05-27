@@ -1,0 +1,324 @@
+<template>
+    <div class="slds-p-around_medium">
+        <lightning-card icon-name="standard:file" title="All Files">
+
+            <div slot="actions">
+                <lightning-button
+                    label={aiToggleLabel}
+                    variant="neutral"
+                    icon-name={aiToggleIcon}
+                    onclick={handleToggleAiVisibility}
+                    class="slds-m-right_x-small">
+                </lightning-button>
+
+                <lightning-button
+                    label="Delete Selected"
+                    variant="destructive"
+                    icon-name="utility:delete"
+                    onclick={handleDeleteSelected}
+                    disabled={isDeleteDisabled}
+                    class="slds-m-right_x-small">
+                </lightning-button>
+
+                <lightning-button
+                    label="Add File"
+                    variant="brand"
+                    icon-name="utility:upload"
+                    onclick={handleAddFile}
+                    disabled={hasNoRecordId}>
+                </lightning-button>
+            </div>
+
+            <!-- File Upload Modal -->
+            <template if:true={showUploadModal}>
+                <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                    <div class="slds-modal__container">
+
+                        <header class="slds-modal__header">
+                            <button
+                                class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                                title="Close"
+                                onclick={handleCloseUploadModal}>
+                                <lightning-icon icon-name="utility:close" alternative-text="Close" size="small"></lightning-icon>
+                            </button>
+                            <h2 class="slds-modal__title slds-hyphenate">Upload Files</h2>
+                        </header>
+
+                        <div class="slds-modal__content slds-p-around_medium">
+                            <lightning-file-upload
+                                label="Upload Files"
+                                name="fileUploader"
+                                accept={acceptedFormats}
+                                record-id={recordId}
+                                onuploadfinished={handleUploadFinished}
+                                multiple>
+                            </lightning-file-upload>
+                        </div>
+
+                        <footer class="slds-modal__footer">
+                            <lightning-button label="Cancel" onclick={handleCloseUploadModal}></lightning-button>
+                        </footer>
+
+                    </div>
+                </section>
+                <div class="slds-backdrop slds-backdrop_open"></div>
+            </template>
+
+            <!-- Delete Confirmation Modal -->
+            <template if:true={showDeleteModal}>
+                <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                    <div class="slds-modal__container">
+
+                        <header class="slds-modal__header">
+                            <button
+                                class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                                title="Close"
+                                onclick={handleCloseDeleteModal}>
+                                <lightning-icon icon-name="utility:close" alternative-text="Close" size="small"></lightning-icon>
+                            </button>
+                            <h2 class="slds-modal__title slds-hyphenate">Confirm Deletion</h2>
+                        </header>
+
+                        <div class="slds-modal__content slds-p-around_medium">
+                            <p>
+                                Are you sure you want to delete {selectedCount} selected file(s)?
+                                This action cannot be undone.
+                            </p>
+                        </div>
+
+                        <footer class="slds-modal__footer">
+                            <lightning-button
+                                label="Cancel"
+                                onclick={handleCloseDeleteModal}
+                                class="slds-m-right_x-small">
+                            </lightning-button>
+
+                            <lightning-button
+                                label="Delete"
+                                variant="destructive"
+                                onclick={confirmDelete}>
+                            </lightning-button>
+                        </footer>
+
+                    </div>
+                </section>
+                <div class="slds-backdrop slds-backdrop_open"></div>
+            </template>
+
+            <!-- Main Content -->
+            <div class="slds-p-around_small">
+
+                <!-- No recordId guard -->
+                <template if:true={hasNoRecordId}>
+                    <div class="slds-align_absolute-center slds-p-around_large">
+                        <div class="slds-text-align_center">
+                            <lightning-icon icon-name="utility:warning" size="large" class="slds-m-bottom_small"></lightning-icon>
+                            <p class="slds-text-heading_small slds-m-top_small">No Account Selected</p>
+                            <p class="slds-text-body_regular slds-text-color_weak slds-m-top_xx-small">
+                                Please navigate to this page from an Account record using the "View All" button.
+                            </p>
+                        </div>
+                    </div>
+                </template>
+
+                <template if:false={hasNoRecordId}>
+
+                    <template if:true={isLoading}>
+                        <lightning-spinner alternative-text="Loading files" size="medium"></lightning-spinner>
+                    </template>
+
+                    <template if:false={isLoading}>
+
+                        <!-- Toolbar: search + count -->
+                        <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center slds-p-bottom_small">
+
+                            <div class="slds-col slds-size_1-of-3">
+                                <lightning-input
+                                    type="search"
+                                    label="Search files"
+                                    variant="label-hidden"
+                                    placeholder="Search by title, provider, description..."
+                                    value={searchTerm}
+                                    onchange={handleSearch}>
+                                </lightning-input>
+                            </div>
+
+                            <div class="slds-col slds-text-body_small slds-text-color_weak slds-text-align_right">
+                                {filteredFileCount} file(s)
+                            </div>
+
+                        </div>
+
+                        <!-- Custom Table -->
+                        <template if:true={hasFiles}>
+                            <div class="files-table-wrapper">
+                                <table class="files-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-select">
+                                                <input type="checkbox"
+                                                       checked={isAllSelectedOnPage}
+                                                       onchange={handleSelectAll}/>
+                                            </th>
+                                            <th class="col-chevron"></th>
+                                            <th class="col-title-head sortable"
+                                                data-field="title"
+                                                onclick={handleSort}>
+                                                Title <span class="sort-indicator">{sortIndicatorTitle}</span>
+                                            </th>
+                                            <th class="col-date sortable"
+                                                data-field="serviceDatetime"
+                                                onclick={handleSort}>
+                                                Date of Service <span class="sort-indicator">{sortIndicatorDate}</span>
+                                            </th>
+                                            <th>Description</th>
+                                            <th>Portal</th>
+                                            <th>Provider</th>
+                                            <th>Source</th>
+                                            <th class="col-menu"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template for:each={displayedRows} for:item="row">
+                                            <tr key={row.rowKey} class={row.rowClass}>
+                                                <td class="col-select">
+                                                    <template if:false={row.isChild}>
+                                                        <input type="checkbox"
+                                                               data-id={row.contentDocumentId}
+                                                               checked={row.isSelected}
+                                                               onchange={handleRowSelect}/>
+                                                    </template>
+                                                </td>
+                                                <td class="col-chevron">
+                                                    <template if:true={row.hasChildren}>
+                                                        <lightning-button-icon
+                                                            icon-name={row.chevronIcon}
+                                                            variant="bare"
+                                                            size="small"
+                                                            alternative-text="Toggle"
+                                                            data-id={row.contentDocumentId}
+                                                            onclick={handleToggleExpand}>
+                                                        </lightning-button-icon>
+                                                    </template>
+                                                </td>
+                                                <td class="col-title">
+                                                    <div class="title-cell">
+                                                        <template if:true={row.isChild}>
+                                                            <span class="child-connector"></span>
+                                                        </template>
+                                                        <lightning-icon icon-name={row.iconName}
+                                                                        size="x-small"
+                                                                        class={row.iconClass}>
+                                                        </lightning-icon>
+                                                        <a href={row.fileUrl} class="title-link">{row.title}</a>
+                                                        <template if:true={row.showAiBadge}>
+                                                            <span class="ai-summary-badge">AI Summary</span>
+                                                        </template>
+                                                    </div>
+                                                </td>
+                                                <td class="col-date">
+                                                    <template if:true={row.serviceDatetime}>
+                                                        <lightning-formatted-date-time
+                                                            value={row.serviceDatetime}
+                                                            year="numeric" month="short" day="2-digit"
+                                                            hour="2-digit" minute="2-digit">
+                                                        </lightning-formatted-date-time>
+                                                    </template>
+                                                </td>
+                                                <td class="col-description">{row.description}</td>
+                                                <td class="col-portal">
+                                                    <template if:true={row.hasPortal}>
+                                                        <span class={row.portalClass}>{row.portalLabel}</span>
+                                                    </template>
+                                                    <template if:false={row.hasPortal}>
+                                                        <span class="muted">&mdash;</span>
+                                                    </template>
+                                                </td>
+                                                <td>{row.provider}</td>
+                                                <td>{row.source}</td>
+                                                <td class="col-menu">
+                                                    <lightning-button-menu
+                                                        icon-name="utility:threedots_vertical"
+                                                        variant="border-filled"
+                                                        alternative-text="Actions"
+                                                        menu-alignment="right"
+                                                        data-id={row.contentDocumentId}
+                                                        onselect={handleRowMenuAction}>
+                                                        <lightning-menu-item label="Preview File" value="preview"></lightning-menu-item>
+                                                        <lightning-menu-item label="Edit File Details" value="edit"></lightning-menu-item>
+                                                        <lightning-menu-item label="Delete File" value="delete"></lightning-menu-item>
+                                                    </lightning-button-menu>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Pagination Footer -->
+                            <div class="pagination-footer">
+                                <div class="pagination-left">
+                                    Showing {pageInfo.start}&ndash;{pageInfo.end} of {pageInfo.totalFiles} files
+                                </div>
+                                <div class="pagination-center">
+                                    <button type="button"
+                                            class="page-button page-nav"
+                                            disabled={pageInfo.isFirstPage}
+                                            onclick={handlePrevPage}>
+                                        &lsaquo; Previous
+                                    </button>
+                                    <template for:each={pageNumbers} for:item="p">
+                                        <template if:true={p.isGap}>
+                                            <span key={p.key} class="page-gap">&hellip;</span>
+                                        </template>
+                                        <template if:false={p.isGap}>
+                                            <button type="button"
+                                                    key={p.key}
+                                                    class={p.buttonClass}
+                                                    data-page={p.page}
+                                                    onclick={handlePageChange}>
+                                                {p.label}
+                                            </button>
+                                        </template>
+                                    </template>
+                                    <button type="button"
+                                            class="page-button page-nav"
+                                            disabled={pageInfo.isLastPage}
+                                            onclick={handleNextPage}>
+                                        Next &rsaquo;
+                                    </button>
+                                </div>
+                                <div class="pagination-right">
+                                    <label class="rows-per-page-label">Rows per page</label>
+                                    <lightning-combobox
+                                        variant="label-hidden"
+                                        value={pageSizeValue}
+                                        options={pageSizeOptions}
+                                        onchange={handlePageSizeChange}
+                                        class="rows-per-page-combobox">
+                                    </lightning-combobox>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- No Files -->
+                        <template if:false={hasFiles}>
+                            <div class="slds-align_absolute-center slds-p-around_large">
+                                <div class="slds-text-align_center">
+                                    <lightning-icon icon-name="standard:file" size="large" class="slds-m-bottom_small"></lightning-icon>
+                                    <p class="slds-text-heading_small slds-m-top_small">No Files Found</p>
+                                    <p class="slds-text-body_regular slds-text-color_weak slds-m-top_xx-small">
+                                        Upload a file to get started.
+                                    </p>
+                                </div>
+                            </div>
+                        </template>
+
+                    </template>
+                </template>
+
+            </div>
+
+        </lightning-card>
+    </div>
+</template>

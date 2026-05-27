@@ -1,0 +1,43 @@
+<!--
+  @description       : 
+  @author            : ChangeMeIn@UserSettingsUnder.SFDoc
+  @group             : 
+  @last modified on  : 11-05-2025
+  @last modified by  : ChangeMeIn@UserSettingsUnder.SFDoc
+-->
+<template>
+    <lightning-card title="CTI Dialer Test" icon-name="utility:call">
+        <div class="slds-p-around_medium">
+            <p>
+                <strong>Default Click-to-Dial Test:</strong>
+            </p>
+            <p><lightning-click-to-dial value="14155555551"></lightning-click-to-dial></p>
+            <p>
+                <lightning-formatted-phone value="+18005551212"></lightning-formatted-phone>
+            </p>
+
+            <p class="slds-m-top_medium">
+                <strong>Custom Click Handler Test:</strong>
+            </p>
+            <p>
+                <a href="javascript:void(0)" onclick={handleDial}>📞 Call +1 (800) 555-1212</a>
+            </p>
+
+            <template if:true={dialStatus}>
+                <p class="slds-m-top_medium slds-text-color_success">
+                    {dialStatus}
+                </p>
+            </template>
+        </div>
+    </lightning-card>
+      <div class="slds-m-around_medium">
+        <h1 class="slds-text-heading_small">Simulate Phone System Management</h1>
+        <p class="slds-text-body_regular">This example lets you simulate enabling and disabling a phone system using Open CTI. You can also add an onClickToDial handler to call a function when a user clicks an enabled phone number. Click each button below to change the state of component.</p>
+    </div>
+    <lightning-button label="enableClickToDial" onclick={enableClickToDial}></lightning-button>
+    <lightning-button label="disableClickToDial" onclick={disableClickToDial}></lightning-button>
+    <lightning-button label="onClickToDial" onclick={onClickToDial}></lightning-button>
+    <p><lightning-click-to-dial value="+918303001002"></lightning-click-to-dial></p>
+    <p><lightning-click-to-dial value="14155555555" record-id="5003000000D8cuI" params="accountSid=xxx, sourceId=xxx, apiVersion=123"></lightning-click-to-dial></p>
+
+</template>

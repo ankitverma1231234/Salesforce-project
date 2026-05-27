@@ -1,0 +1,13 @@
+<template>
+    <template if:true={loading}>
+        <lightning-spinner alternative-text="Processing payment link..." size="medium"></lightning-spinner>
+        <p style="text-align:center;">Processing your payment link...</p>
+    </template>
+
+    <template if:true={errorMessage}>
+        <div class="slds-text-color_error slds-p-around_medium">
+            <lightning-icon icon-name="utility:error" alternative-text="error" size="small"></lightning-icon>
+            <span>{errorMessage}</span>
+        </div>
+    </template>
+</template>

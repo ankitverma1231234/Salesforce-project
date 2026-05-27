@@ -1,0 +1,382 @@
+<template>
+    <div class="naming-rules-container">
+
+        <!-- ═══════════════ HEADER ═══════════════ -->
+        <div class="header-section">
+            <div class="header-left">
+                <h1 class="page-title">BatonCare Naming Rules</h1>
+                <p class="page-subtitle">
+                    Configure prompt-based naming rules, tag-ready criteria, execution priority, and manual test runs for BatonCare documents.
+                </p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-outlined" onclick={handleOpenTestRun}>
+                    <lightning-icon icon-name="utility:play" size="xx-small" class="btn-icon"></lightning-icon>
+                    <span>Test Run</span>
+                </button>
+                <button class="btn btn-primary" onclick={handleNewRule}>
+                    <lightning-icon icon-name="utility:add" size="xx-small" class="btn-icon btn-icon-light"></lightning-icon>
+                    <span>New Rule</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ═══════════════ STATS CARDS ═══════════════ -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <span class="stat-label">TOTAL RULES</span>
+                <span class="stat-value">{totalRules}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">ACTIVE RULES</span>
+                <span class="stat-value stat-value--active">{activeRulesCount}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">READY FOR MANUAL TEST</span>
+                <span class="stat-value stat-value--ready">{readyForManualTestCount}</span>
+            </div>
+        </div>
+
+        <!-- ═══════════════ RULES TABLE ═══════════════ -->
+        <div class="table-card">
+            <div class="table-header">
+                <div class="table-header-left">
+                    <h2 class="section-title">Rule Priority &amp; Execution</h2>
+                    <p class="section-subtitle">Lower order runs first. Select one rule and use Test Run to preview a suggestion.</p>
+                </div>
+            </div>
+
+            <template if:true={state.loading.rules}>
+                <div class="loading-container">
+                    <lightning-spinner alternative-text="Loading rules..." size="medium"></lightning-spinner>
+                </div>
+            </template>
+
+            <template if:false={state.loading.rules}>
+                <template if:true={ruleRows.length}>
+                    <div class="table-wrapper">
+                        <table class="rules-table">
+                            <thead>
+                                <tr>
+                                    <th class="col-select">Select</th>
+                                    <th class="col-order">Order</th>
+                                    <th class="col-name">Rule Name</th>
+                                    <th class="col-criteria">Criteria</th>
+                                    <th class="col-action">Action Prompt</th>
+                                    <th class="col-status">Status</th>
+                                    <th class="col-tested">Last Test</th>
+                                    <th class="col-actions">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={ruleRows} for:item="rule">
+                                    <tr key={rule.Id} class="table-row">
+                                        <!-- Select -->
+                                        <td class="col-select">
+                                            <label class="radio-container">
+                                                <input
+                                                    type="radio"
+                                                    name="selectedRule"
+                                                    value={rule.Id}
+                                                    onchange={handleSelectRule}
+                                                />
+                                                <span class="radio-checkmark"></span>
+                                            </label>
+                                        </td>
+
+                                        <!-- Order -->
+                                        <td class="col-order">
+                                            <span class="order-badge">{rule.Order__c}</span>
+                                        </td>
+
+                                        <!-- Rule Name -->
+                                        <td class="col-name">
+                                            <span class="rule-name-text">{rule.Name}</span>
+                                        </td>
+
+                                        <!-- Criteria -->
+                                        <td class="col-criteria">
+                                            <span class="cell-text-truncate">{rule.criteriaSummary}</span>
+                                        </td>
+
+                                        <!-- Action Prompt -->
+                                        <td class="col-action">
+                                            <span class="cell-text-truncate">{rule.actionSummary}</span>
+                                        </td>
+
+                                        <!-- Status Toggle (read-only, use Edit action to change) -->
+                                        <td class="col-status">
+                                            <label class="toggle-switch toggle-switch--disabled">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={rule.Is_Active__c}
+                                                    disabled
+                                                />
+                                                <span class="toggle-slider"></span>
+                                            </label>
+                                            <span class="toggle-label">
+                                                <template if:true={rule.Is_Active__c}>Active</template>
+                                                <template if:false={rule.Is_Active__c}>Inactive</template>
+                                            </span>
+                                        </td>
+
+                                        <!-- Last Test -->
+                                        <td class="col-tested">
+                                            <span class="test-never">—</span>
+                                        </td>
+
+                                        <!-- Actions -->
+                                        <td class="col-actions">
+                                            <div class="action-buttons">
+                                                <button class="icon-btn icon-btn--edit" data-id={rule.Id} onclick={handleEditRule} title="Edit Rule">
+                                                    <lightning-icon icon-name="utility:edit" size="xx-small" data-id={rule.Id}></lightning-icon>
+                                                </button>
+                                                <button class="icon-btn icon-btn--delete" data-id={rule.Id} onclick={handleDeleteRule} title="Delete Rule">
+                                                    <lightning-icon icon-name="utility:delete" size="xx-small" data-id={rule.Id}></lightning-icon>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+
+                <template if:false={ruleRows.length}>
+                    <div class="empty-state">
+                        <lightning-icon icon-name="utility:rules" size="large" class="empty-icon"></lightning-icon>
+                        <h3 class="empty-title">No rules found</h3>
+                        <p class="empty-text">Create your first AI file naming rule to get started.</p>
+                        <button class="btn btn-primary" onclick={handleNewRule}>
+                            <lightning-icon icon-name="utility:add" size="xx-small" class="btn-icon btn-icon-light"></lightning-icon>
+                            <span>Create First Rule</span>
+                        </button>
+                    </div>
+                </template>
+            </template>
+        </div>
+
+        <!-- ═══════════════ RULE MODAL ═══════════════ -->
+        <template if:true={isRuleModalOpen}>
+            <div class="modal-backdrop" onclick={handleCloseModal}></div>
+            <div class="modal-container">
+                <div class="modal-dialog">
+                    <div class="modal-header">
+                        <h2 class="modal-title">{modalTitle}</h2>
+                        <button class="modal-close" onclick={handleCloseModal}>
+                            <lightning-icon icon-name="utility:close" size="small"></lightning-icon>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-row">
+                            <div class="form-col">
+                                <lightning-input
+                                    label="Rule Name"
+                                    value={state.draftRule.Name}
+                                    onchange={handleFieldChange}
+                                    data-field="Name"
+                                    required
+                                    class="modern-input">
+                                </lightning-input>
+                            </div>
+                            <div class="form-col form-col--small">
+                                <lightning-input
+                                    label="Order"
+                                    type="number"
+                                    value={state.draftRule.Order__c}
+                                    onchange={handleFieldChange}
+                                    data-field="Order__c"
+                                    min="1"
+                                    required
+                                    class="modern-input">
+                                </lightning-input>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <lightning-input
+                                type="toggle"
+                                label="Active"
+                                checked={state.draftRule.Is_Active__c}
+                                onchange={handleFieldChange}
+                                data-field="Is_Active__c"
+                                class="modern-input">
+                            </lightning-input>
+                        </div>
+                        <div class="form-group">
+                            <lightning-combobox
+                                label="Criteria Mode"
+                                value={state.draftRule.Criteria_Mode__c}
+                                options={criteriaModeOptions}
+                                onchange={handleFieldChange}
+                                data-field="Criteria_Mode__c"
+                                required
+                                class="modern-input">
+                            </lightning-combobox>
+                        </div>
+                        <div class="form-group">
+                            <lightning-textarea
+                                label="Criteria Prompt"
+                                value={state.draftRule.Criteria_Prompt__c}
+                                onchange={handleFieldChange}
+                                data-field="Criteria_Prompt__c"
+                                class="modern-input">
+                            </lightning-textarea>
+                        </div>
+                        <div class="form-group">
+                            <lightning-textarea
+                                label="Tags (comma separated)"
+                                value={state.draftRule.Tags__c}
+                                onchange={handleFieldChange}
+                                data-field="Tags__c"
+                                class="modern-input">
+                            </lightning-textarea>
+                        </div>
+                        <div class="form-group">
+                            <lightning-textarea
+                                label="Action Prompt"
+                                value={state.draftRule.Action_Prompt__c}
+                                onchange={handleFieldChange}
+                                data-field="Action_Prompt__c"
+                                required
+                                class="modern-input">
+                            </lightning-textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" onclick={handleCloseModal}>Cancel</button>
+                        <button class="btn btn-primary" onclick={handleSaveRule}>Save Rule</button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- ═══════════════ TEST MODAL ═══════════════ -->
+        <template if:true={isTestModalOpen}>
+            <div class="modal-backdrop" onclick={handleCloseModal}></div>
+            <div class="modal-container">
+                <div class="modal-dialog modal-dialog--large">
+                    <div class="modal-header">
+                        <h2 class="modal-title">Test Rule</h2>
+                        <button class="modal-close" onclick={handleCloseModal}>
+                            <lightning-icon icon-name="utility:close" size="small"></lightning-icon>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="search-label">Select Account</label>
+                            <div class="account-search-wrapper">
+                                <template if:false={state.testData.selectedAccountName}>
+                                    <lightning-input
+                                        type="search"
+                                        placeholder="Search person accounts by name or email..."
+                                        value={state.testData.accountSearchTerm}
+                                        onchange={handleAccountSearch}
+                                        class="modern-input">
+                                    </lightning-input>
+                                    <template if:true={state.loading.accounts}>
+                                        <div class="inline-spinner">
+                                            <lightning-spinner alternative-text="Searching..." size="small"></lightning-spinner>
+                                        </div>
+                                    </template>
+                                    <template if:true={showAccountDropdown}>
+                                        <ul class="account-dropdown">
+                                            <template for:each={state.testData.accountResults} for:item="acc">
+                                                <li key={acc.id} class="account-option" data-id={acc.id} data-name={acc.name} onclick={handleAccountSelect}>
+                                                    <span class="account-option-name">{acc.name}</span>
+                                                    <template if:true={acc.email}>
+                                                        <span class="account-option-email">{acc.email}</span>
+                                                    </template>
+                                                </li>
+                                            </template>
+                                            <template if:false={state.testData.accountResults.length}>
+                                                <li class="account-option account-option--empty">No accounts found</li>
+                                            </template>
+                                        </ul>
+                                    </template>
+                                </template>
+                                <template if:true={state.testData.selectedAccountName}>
+                                    <div class="selected-account-pill">
+                                        <lightning-icon icon-name="standard:person_account" size="x-small" class="pill-icon"></lightning-icon>
+                                        <span class="pill-label">{state.testData.selectedAccountName}</span>
+                                        <template if:true={state.testData.selectedAccountEmail}>
+                                            <span class="pill-email">({state.testData.selectedAccountEmail})</span>
+                                        </template>
+                                        <button class="pill-remove" onclick={handleAccountClear} title="Remove">
+                                            <lightning-icon icon-name="utility:close" size="xx-small"></lightning-icon>
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <template if:true={state.testData.selectedAccountName}>
+                            <div class="form-group">
+                                <label class="search-label">Select File</label>
+                                <select
+                                    class="file-native-select"
+                                    value={state.testData.fileId}
+                                    onchange={handleFileChange}
+                                    disabled={state.loading.files}>
+                                    <option value="">Select a file...</option>
+                                    <template for:each={state.testData.fileOptions} for:item="file">
+                                        <option key={file.value} value={file.value}>{file.label}</option>
+                                    </template>
+                                </select>
+                                <template if:true={state.loading.files}>
+                                    <div class="inline-spinner">
+                                        <lightning-spinner alternative-text="Loading files..." size="small"></lightning-spinner>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+
+                        <template if:true={state.loading.test}>
+                            <div class="test-running-state">
+                                <lightning-spinner alternative-text="Running AI test..." size="medium"></lightning-spinner>
+                                <p class="test-running-text">Running AI analysis... This may take a moment.</p>
+                            </div>
+                        </template>
+
+                        <template if:true={showTestResult}>
+                            <div class={testResultCardClass}>
+                                <div class="test-result-header">
+                                    <lightning-icon icon-name={testResultIcon} size="small" class="result-icon"></lightning-icon>
+                                    <h3 class="test-result-title">{testResultTitle}</h3>
+                                </div>
+                                <div class="test-result-body">
+                                    <template if:true={state.testData.result.suggestedFileName}>
+                                        <div class="result-row">
+                                            <span class="result-label">Suggested File Name</span>
+                                            <span class="result-value result-value--highlight">{state.testData.result.suggestedFileName}</span>
+                                        </div>
+                                    </template>
+                                    <div class="result-row">
+                                        <span class="result-label">Criteria Matched</span>
+                                        <span class="result-value">{state.testData.result.criteriaMatched}</span>
+                                    </div>
+                                    <div class="result-row">
+                                        <span class="result-label">Action Used</span>
+                                        <span class="result-value">{state.testData.result.actionUsed}</span>
+                                    </div>
+                                    <div class="result-row">
+                                        <span class="result-label">Summary</span>
+                                        <span class="result-value">{state.testData.result.summary}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-ghost" onclick={handleCloseModal}>Close</button>
+                        <button class="btn btn-primary" onclick={handleStartTest} disabled={isStartTestDisabled}>
+                            <lightning-icon icon-name="utility:play" size="xx-small" class="btn-icon btn-icon-light"></lightning-icon>
+                            <span>Start Test</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+    </div>
+</template>

@@ -1,0 +1,56 @@
+<apex:page standardController="PatientImmunization"
+           recordSetVar="records"
+           extensions="DynamicRelatedListDeleteController"
+           action="{!autoDelete}"
+           showHeader="false"
+           sidebar="false"
+           standardStylesheets="false">
+    <style>
+        body {
+            font-family: 'Salesforce Sans', Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background: #f3f3f3;
+        }
+        .toast {
+            padding: 16px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            color: #fff;
+            max-width: 400px;
+            text-align: center;
+        }
+        .success { background: #2e844a; }
+        .error   { background: #ba0517; }
+        .warning { background: #dd7a01; color: #111; }
+    </style>
+    <apex:outputPanel rendered="{!NOT(ISBLANK(toastType))}">
+        <div class="toast {!JSENCODE(toastType)}">
+            {!JSENCODE(toastMessage)}
+        </div>
+    </apex:outputPanel>
+    <script>
+    (function () {
+        var toastType  = '{!JSENCODE(toastType)}';
+        var accountId  = '{!JSENCODE(accountId)}';
+        if (toastType === 'error') return;
+        if (!accountId || accountId.trim() === '') {
+            console.error('accountId is empty, cannot redirect.');
+            return;
+        }
+        var redirectURL = '/lightning/r/Account/' + accountId + '/view';
+        setTimeout(function () {
+            try {
+                window.top.location.href = redirectURL;
+            } catch (e) {
+                window.location.href = redirectURL;
+            }
+        }, 1500);
+    })();
+    </script>
+</apex:page>

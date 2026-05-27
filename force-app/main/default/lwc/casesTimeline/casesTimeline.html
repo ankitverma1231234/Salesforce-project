@@ -1,0 +1,33 @@
+<template>
+    <lightning-card title="Related Cases Timeline" icon-name="standard:case">
+        <template if:true={cases}>
+            <ul class="slds-timeline">
+                <template for:each={cases} for:item="cs">
+                    <li key={cs.Id} class="slds-timeline__item_expandable slds-timeline__item_case">
+                        <span class="slds-assistive-text">Case</span>
+                        <div class="slds-media">
+                            <div class="slds-media__figure">
+                                <lightning-icon icon-name="standard:case" size="small"></lightning-icon>
+                            </div>
+                            <div class="slds-media__body">
+                                <p class="slds-truncate">
+                                    <a href="javascript:void(0)" 
+                                       data-id={cs.Id} 
+                                       onclick={handleCaseClick}>
+                                        {cs.CaseNumber} - {cs.Subject}
+                                    </a>
+                                </p>
+                                <p class="slds-truncate">Status: {cs.Status}</p>
+                                <p class="slds-truncate">Priority: {cs.Priority}</p>
+                                <p class="slds-truncate">Created: {cs.CreatedDate}</p>
+                            </div>
+                        </div>
+                    </li>
+                </template>
+            </ul>
+        </template>
+        <template if:false={cases}>
+            <p class="slds-p-around_medium">No cases found</p>
+        </template>
+    </lightning-card>
+</template>

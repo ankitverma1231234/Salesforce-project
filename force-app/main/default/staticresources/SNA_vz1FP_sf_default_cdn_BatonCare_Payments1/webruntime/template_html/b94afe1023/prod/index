@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang={language}>
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1" />
+        <meta
+            name="lwr-revised"
+            content="236.0" />
+        <script type="text/javascript">
+            {
+                errorHandlerScript;
+            }
+        </script>
+        {webruntimeInit} {headmarkup}
+    </head>
+    <body>
+        <webruntime-app></webruntime-app>
+    </body>
+</html>

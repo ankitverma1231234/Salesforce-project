@@ -1,0 +1,22 @@
+<template>
+    <lightning-card title="Send NDA">
+        <div class="slds-p-around_medium">
+            <p>This will generate the document in DocFlow and save the access link on this record.</p>
+
+            <div class="slds-m-top_medium">
+                <lightning-button
+                    label="Send Document"
+                    variant="brand"
+                    onclick={handleSend}
+                    disabled={isLoading}>
+                </lightning-button>
+            </div>
+
+            <template if:true={isLoading}>
+                <div class="slds-m-top_medium">
+                    <lightning-spinner alternative-text="Sending"></lightning-spinner>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>

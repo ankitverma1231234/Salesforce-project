@@ -1,0 +1,480 @@
+<apex:page controller="GeminiFileInsightsPdfController"
+           renderAs="pdf"
+           applyBodyTag="false"
+           showHeader="false"
+           sidebar="false"
+           standardStylesheets="false"
+           docType="html-5.0"
+           >
+    <html>
+        <head>
+            <style>
+                /* ══════════════════════════════════════════════
+                PAGE SETUP
+                ══════════════════════════════════════════════ */
+                @page {
+                size: A4;
+                margin: 20mm 18mm 22mm 18mm;
+                
+                @bottom-center {
+                content: "Page " counter(page) " of " counter(pages);
+                font-family: Arial, Helvetica, sans-serif;
+                font-size: 7.5px;
+                color: #8a9bb5;
+                }
+                }
+                
+                @page :first {
+                margin-top: 14mm;
+                
+                @top-left {
+                content: element(pageHeader);
+                }
+                }
+                
+                body {
+                font-family: Arial, Helvetica, sans-serif;
+                color: #1e2a3a;
+                font-size: 10px;
+                line-height: 1.7;
+                margin: 0;
+                padding: 0;
+                }
+                
+                /* ══════════════════════════════════════════════
+                RUNNING HEADER (first page only)
+                ══════════════════════════════════════════════ */
+                .running-header {
+                position: running(pageHeader);
+                }
+                
+                .header-table {
+                width: 100%;
+                border-collapse: collapse;
+                table-layout: fixed;
+                }
+                .header-table td {
+                border: none;
+                padding: 0;
+                vertical-align: middle;
+                }
+                
+                .logo-cell {
+                width: 80px;
+                }
+                .logo-img {
+                display: block;
+                width: 75px;
+                height: auto;
+                }
+                
+                .company-info-cell {
+                width: auto;
+                text-align: right;
+                font-size: 8px;
+                color: #5b6d85;
+                line-height: 1.55;
+                }
+                .company-info-cell .co-name {
+                font-weight: 700;
+                font-size: 9px;
+                color: #1e2a3a;
+                }
+                
+                /* ══════════════════════════════════════════════
+                DOCUMENT TITLE BANNER
+                ══════════════════════════════════════════════ */
+                .doc-title-bar {
+                background: #f0f5ff;
+                border-left: 4px solid #2f6fed;
+                padding: 5rem 10rem;
+                margin: 8rem 0 14px 0;
+                }
+                .doc-title {
+                font-size: 20px;
+                font-weight: 700;
+                color: #1e2a3a;
+                text-decoration: underline;
+                margin: 0;
+                letter-spacing: 0.2px;
+                }
+                .doc-meta {
+                font-size: 8px;
+                color: #5b6d85;
+                margin-top: 2px;
+                }
+                
+                /* ══════════════════════════════════════════════
+                SECTION SPACER (replaces divider lines)
+                ══════════════════════════════════════════════ */
+                .section-spacer {
+                margin-top: 34px;
+                }
+                
+                .spacer-thin {
+                margin-top: 14px;
+                }
+                
+                /* ══════════════════════════════════════════════
+                PATIENT DEMOGRAPHICS
+                ══════════════════════════════════════════════ */
+                .patient-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 9.5px;
+                line-height: 1.85;
+                margin-bottom: 4px;
+                }
+                .patient-table td {
+                border: none;
+                padding: 0;
+                vertical-align: top;
+                }
+                .patient-col-left  { width: 56%; }
+                .patient-col-right { 
+                   width: 44%; 
+                   margin-left : 8px; 
+                }
+                .patient-label {
+                font-weight: 700;
+                color: #1e2a3a;
+                }
+                
+                /* ══════════════════════════════════════════════
+                SECTION HEADINGS
+                ══════════════════════════════════════════════ */
+                .section-heading {
+                font-size: 16px;
+                font-weight: 1000;
+                color: #1e2a3a;
+                text-transform: uppercase;
+                letter-spacing: 0.6px;
+                border-left: 4px solid #2f6fed;
+                padding-left: 10px;
+                margin-top: 4px;
+                margin-bottom: 18px;
+                }
+                
+                .section-heading-first {
+                margin-top: 24px;
+                }
+                
+                /* ══════════════════════════════════════════════
+                SECTION CONTENT
+                ══════════════════════════════════════════════ */
+                .section-content {
+                font-size: 10px;
+                color: #1e2a3a;
+                line-height: 1.7;
+                margin-bottom: 16px;
+                }
+                .section-content p {
+                margin: 0 0 14px 0;
+                }
+                .section-content ul,
+                .section-content ol {
+                margin: 8px 0 14px 20px;
+                padding: 0;
+                }
+                .section-content li {
+                margin-bottom: 8px;
+                }
+                .section-content h3 {
+                font-size: 10.5px;
+                font-weight: 700;
+                margin: 10px 0 4px 0;
+                color: #1e2a3a;
+                }
+                .section-content strong {
+                color: #1e2a3a;
+                }
+                .section-content mark {
+                background: #fff3cd;
+                padding: 1px 3px;
+                border-radius: 2px;
+                }
+                
+                .section-content table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 6px 0 10px 0;
+                font-size: 9.5px;
+                }
+                .section-content table th,
+                .section-content table td {
+                border: 1px solid #d9e2f2;
+                padding: 4px 7px;
+                vertical-align: top;
+                text-align: left;
+                }
+                .section-content table th {
+                background: #edf4ff;
+                font-weight: 700;
+                font-size: 9px;
+                color: #1e2a3a;
+                }
+                
+                /* ══════════════════════════════════════════════
+                KEY FIELDS TABLE
+                ══════════════════════════════════════════════ */
+                .fields-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 6px;
+                margin-bottom: 6px;
+                font-size: 9.5px;
+                }
+                .fields-table th,
+                .fields-table td {
+                border: 1px solid #d9e2f2;
+                padding: 5px 8px;
+                vertical-align: top;
+                }
+                .fields-table th {
+                background: #e8f0fe;
+                text-align: left;
+                color: #1e2a3a;
+                font-weight: 700;
+                font-size: 9px;
+                text-transform: uppercase;
+                letter-spacing: 0.3px;
+                }
+                .fields-table tr:nth-child(even) td {
+                background: #fafcff;
+                }
+                
+                /* ══════════════════════════════════════════════
+                CLASSIFICATION TAGS
+                ══════════════════════════════════════════════ */
+                .tags-area {
+                margin-top: 6px;
+                }
+                .tag-category-name {
+                font-size: 9px;
+                font-weight: 700;
+                color: #2f6fed;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 4px;
+                margin-top: 8px;
+                }
+                .chip {
+                display: inline-block;
+                padding: 2px 9px;
+                margin: 0 4px 5px 0;
+                border: 1px solid #c4d8f9;
+                background: #edf4ff;
+                border-radius: 999px;
+                font-size: 8.5px;
+                font-weight: 600;
+                color: #1a56c4;
+                }
+                
+                /* ══════════════════════════════════════════════
+                FOOTER NOTE
+                ══════════════════════════════════════════════ */
+                .footer-note {
+                margin-top: 28px;
+                padding-top: 8px;
+                border-top: 1px solid #d9e5f5;
+                font-size: 7.5px;
+                color: #8a9bb5;
+                text-align: center;
+                line-height: 1.5;
+                }
+                
+                /* ══════════════════════════════════════════════
+                STATIC AI DISCLAIMER (top)
+                ══════════════════════════════════════════════ */
+                .ai-notice {
+                background: #eaf7ea;
+                border: 1px solid #b9dfb9;
+                border-left: 4px solid #2e8b57;
+                padding: 8px 12px;
+                margin: 0 0 10px 0;
+                font-size: 9px;
+                line-height: 1.55;
+                color: #1e3a1e;
+                font-weight: 600;
+                }
+
+                /* ══════════════════════════════════════════════
+                CONFIDENTIALITY NOTICE (bottom)
+                ══════════════════════════════════════════════ */
+                .confidentiality-notice {
+                margin-top: 18px;
+                padding: 10px 12px;
+                border-top: 1px solid #d9e5f5;
+                background: #f6faf6;
+                border: 1px solid #d6e8d6;
+                font-size: 8px;
+                line-height: 1.55;
+                color: #1e3a1e;
+                }
+                .confidentiality-notice .cn-title {
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.4px;
+                margin-bottom: 4px;
+                }
+                .confidentiality-notice p {
+                margin: 0 0 6px 0;
+                }
+
+                /* ══════════════════════════════════════════════
+                EMPTY STATE
+                ══════════════════════════════════════════════ */
+                .empty {
+                padding: 24px;
+                text-align: center;
+                border: 1px dashed #c8d6eb;
+                color: #5b6d85;
+                border-radius: 6px;
+                font-size: 11px;
+                margin-top: 40px;
+                }
+            </style>
+        </head>
+        
+        <body>
+
+            <!-- ═══════════ STATIC AI DISCLAIMER (required, top of document) ═══════════ -->
+            <div class="ai-notice">
+                This summary was generated with the assistance of artificial intelligence based on the information contained in the original medical record. It may contain errors, omissions, or incomplete interpretations. The original clinical documentation remains the authoritative source and should be reviewed for all medical decision making.
+            </div>
+
+            <div style="margin-top: 24px;"></div>
+
+            
+            <!-- ═══════════ DOCUMENT TITLE (dynamic; hidden when AI returns no title) ═══════════ -->
+            <apex:outputPanel rendered="{!NOT(ISBLANK(fileTitle))}" layout="block">
+                <div class="doc-title-bar">
+                    <div class="doc-title">{!fileTitle}</div>
+                    <div class="doc-meta">Generated on {!generatedOn}</div>
+                </div>
+            </apex:outputPanel>
+            
+            <div style="margin-top: 18px;"></div>
+            
+            <!-- ═══════════ PATIENT DEMOGRAPHICS ═══════════ -->
+            <apex:outputPanel rendered="{!hasPatientData}">
+                <table class="patient-table">
+                    <tr>
+                        <td class="patient-col-left">
+                            <apex:outputPanel rendered="{!NOT(ISBLANK(patientName))}">
+                                <div><span class="patient-label">Name:</span> {!patientName}</div>
+                            </apex:outputPanel>
+                            <apex:outputPanel rendered="{!NOT(ISBLANK(patientDob))}">
+                                <div><span class="patient-label">Date of Birth:</span> {!patientDob}</div>
+                            </apex:outputPanel>
+                            <apex:outputPanel rendered="{!NOT(ISBLANK(patientBiologicalSex))}">
+                                <div><span class="patient-label">Biological Sex:</span> {!patientBiologicalSex}</div>
+                            </apex:outputPanel>
+                            <apex:outputPanel rendered="{!NOT(ISBLANK(patientPhone))}">
+                                <div><span class="patient-label">Phone:</span> {!patientPhone}</div>
+                            </apex:outputPanel>
+                            <div><span class="patient-label">Date &amp; Time:</span> {!generatedOn}</div>
+                            <apex:outputPanel rendered="{!NOT(ISBLANK(patientEmail))}">
+                                <div><span class="patient-label">Email:</span> {!patientEmail}</div>
+                            </apex:outputPanel>
+                            <apex:outputPanel rendered="{!NOT(ISBLANK(patientAddress))}">
+                                <div><span class="patient-label">Address:</span> {!patientAddress}</div>
+                            </apex:outputPanel>
+                            <apex:outputPanel rendered="{!NOT(ISBLANK(patientMaidenName))}">
+                                <div><span class="patient-label">Maiden Name:</span> {!patientMaidenName}</div>
+                            </apex:outputPanel>
+                             <div style="margin-top: 18px;"></div>
+                            <apex:outputPanel rendered="{!hasConsultingClinician}">
+                                <div><span class="patient-label">Consulting Clinician:</span> {!consultingClinician}</div>
+                            </apex:outputPanel>
+                            <apex:outputPanel rendered="{!hasDocumentLocation}">
+                                <div><span class="patient-label">Location:</span> {!documentLocation}</div>
+                            </apex:outputPanel>
+                        </td>
+                        <td class="patient-col-right">
+                            
+                            
+                        </td>
+                    </tr>
+                </table>
+                <div class="section-spacer"></div>
+            </apex:outputPanel>
+
+             <div style="margin-top: 18px;"></div>
+             <div style="margin-bottom: 18px;"></div>
+
+            <!-- Clinician / Location fallback when Account demographics are absent but AI extracted them -->
+            <apex:outputPanel rendered="{!AND(NOT(hasPatientData), OR(hasConsultingClinician, hasDocumentLocation))}" layout="block">
+                <table class="patient-table">
+                    <tr>
+                        <td class="patient-col-left">
+                            <apex:outputPanel rendered="{!hasConsultingClinician}">
+                                <div><span class="patient-label">Consulting Clinician:</span> {!consultingClinician}</div>
+                            </apex:outputPanel>
+                            <apex:outputPanel rendered="{!hasDocumentLocation}">
+                                <div><span class="patient-label">Location:</span> {!documentLocation}</div>
+                            </apex:outputPanel>
+                        </td>
+                        <td class="patient-col-right">
+                            <div><span class="patient-label">Date &amp; Time:</span> {!generatedOn}</div>
+                        </td>
+                    </tr>
+                </table>
+                <div class="section-spacer"></div>
+            </apex:outputPanel>
+            
+             <div style="margin-bottom: 15px; height: 2px; background-color: #ccc;"></div>
+            
+            <!-- ═══════════ ANALYSIS CONTENT ═══════════ -->
+            <apex:outputPanel rendered="{!hasData}">
+                
+                <!-- ── Summary ── -->
+                <apex:outputPanel rendered="{!hasSummary}">
+                    <div class="section-heading section-heading-first">Summary</div>
+                    <div class="section-content">
+                        <apex:outputText value="{!summaryHtml}" escape="false"/>
+                    </div>
+                </apex:outputPanel>
+                
+                <!-- ── Key Findings ── -->
+                <apex:outputPanel rendered="{!hasKeyFindings}">
+                    <div class="section-spacer"></div>
+                    <div class="section-heading">Key Findings</div>
+                    <div class="section-content">
+                        <apex:outputText value="{!keyFindingsHtml}" escape="false"/>
+                    </div>
+                </apex:outputPanel>
+                
+                <!-- ── Remaining Sections ── -->
+                <apex:repeat value="{!otherSections}" var="sec">
+                    <div class="section-spacer"></div>
+                    <div class="section-heading">{!sec.label}</div>
+                    <div class="section-content">
+                        <apex:outputText value="{!sec.html}" escape="false"/>
+                    </div>
+                </apex:repeat>
+                
+            </apex:outputPanel>
+
+            <!-- ── Empty state ── -->
+            <apex:outputPanel rendered="{!!hasData}">
+                <div class="empty">
+                    No AI analysis data was available for this file at the time of PDF generation.
+                </div>
+            </apex:outputPanel>
+            
+            <!-- ═══════════ STATIC CONFIDENTIALITY NOTICE (required, bottom of document) ═══════════ -->
+            <div class="confidentiality-notice">
+                <div class="cn-title">Confidentiality Notice</div>
+                <p>
+                    This document may contain confidential or legally privileged information. If you are not the intended recipient, any review, dissemination, distribution, or copying is strictly prohibited. If you received this document in error, please delete or destroy all copies.
+                </p>
+                <div class="cn-title">If any portion of this document includes information protected by 42 C.F.R. Part 2, please note the following:</div>
+                <p>
+                    This information has been disclosed to you from records protected by federal confidentiality rules. Federal law prohibits you from making any further disclosure unless expressly permitted by 42 C.F.R. Part 2. A general authorization for the release of medical or other information is NOT sufficient for this purpose.
+                </p>
+            </div>
+            
+        </body>
+    </html>
+</apex:page>

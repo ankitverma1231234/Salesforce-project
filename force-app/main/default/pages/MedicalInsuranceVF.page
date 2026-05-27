@@ -1,0 +1,74 @@
+<apex:page showHeader="false" sidebar="false" standardStylesheets="false">
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Salesforce Sans', Arial, sans-serif;
+        }
+        
+        #lightningComponentContainer {
+            min-height: 500px;
+            padding: 20px;
+        }
+        
+        .error-message {
+            background-color: #c23934;
+            color: white;
+            padding: 15px;
+            margin: 20px;
+            border-radius: 4px;
+        }
+    </style>
+    
+    <apex:includeLightning />
+    
+    <div id="lightningComponentContainer"></div>
+    
+    <script>
+        console.log("=== Initializing Medical Insurance VF Page ===");
+        
+        // Function to get URL parameters
+        function getUrlParameter(name) {
+            name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+            var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+            var results = regex.exec(location.search);
+            return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+        }
+        
+        // Get Account ID from URL
+        var accountId = getUrlParameter('id') || getUrlParameter('accountId');
+        
+        console.log("Account ID from URL:", accountId);
+        
+        // Initialize Lightning Out
+        $Lightning.use("c:MedicalInsuranceApp", function() {
+            
+            // Validate Account ID
+            if (!accountId || accountId === '') {
+                var errorMsg = 'Error: No Account ID provided';
+                console.error(errorMsg);
+                document.getElementById('lightningComponentContainer').innerHTML = 
+                    '<div class="error-message">' + errorMsg + 
+                    '<br/><br/>Please provide Account ID in URL:<br/>' +
+                    '?id=ACCOUNT_ID or ?accountId=ACCOUNT_ID</div>';
+                return;
+            }
+            
+            console.log("Creating Lightning component with Account ID:", accountId);
+            
+            // Create the Lightning component
+            $Lightning.createComponent(
+                "c:MedicalInsuranceDetails",
+                {
+                    recordId: accountId
+                },
+                "lightningComponentContainer",
+                function(component) {
+                    console.log("✓ MedicalInsuranceDetails component created successfully");
+                }
+            );
+        });
+    </script>
+    
+</apex:page>

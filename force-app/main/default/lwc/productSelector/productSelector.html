@@ -1,0 +1,166 @@
+<template>
+    <!-- SHOW MAIN FORM -->
+    <template if:false={showMemberDetailsForm}>
+        <template if:false={successMessage}>
+            <template if:false={errorMessage}>
+                <lightning-card title="Select the Membership Plan">
+                    <div class="slds-p-around_medium" style="width: 300px;">
+                        <lightning-combobox
+                            name="registrationType"
+                            label="Registration Type"
+                            value={registrationType}
+                            placeholder="Select Registration Type"
+                            options={registrationTypeOptions}
+                            onchange={handleRegistrationTypeChange}
+                            required>
+                        </lightning-combobox>
+                    </div>
+
+                    <template if:true={products}>
+                        <lightning-datatable
+                            key-field="Id"
+                            data={products}
+                            columns={columns}
+                            onrowselection={handleRowSelection}
+                            max-row-selection="1">
+                        </lightning-datatable>
+
+                        <template if:true={showEnterMemberDetailsButton}>
+                            <div class="slds-m-top_medium slds-text-align_center">
+                                <lightning-button
+                                    variant="brand"
+                                    label="Enter Member Details"
+                                    onclick={handleEnterMemberDetails}>
+                                </lightning-button>
+                            </div>
+                        </template>
+
+                        <template if:true={showCreatePaymentLinkButton}>
+                            <div class="slds-m-top_medium slds-text-align_center">
+                                <lightning-button
+                                    variant="brand"
+                                    label="Click Here To Pay"
+                                    onclick={handleCreatePaymentLink}>
+                                </lightning-button>
+                            </div>
+                        </template>
+
+                        <!--<template if:true={paymentLink}>
+                            <div class="slds-m-top_medium">
+                                <p><strong>Payment Link:</strong></p>
+                                <a href={paymentLink} target="_blank">{paymentLink}</a>
+                            </div>
+                        </template>-->
+                    </template>
+
+                    <template if:false={products}>
+                        <p class="slds-p-around_medium">No products available.</p>
+                    </template>
+                </lightning-card>
+            </template>
+        </template>
+    </template>
+
+    <!-- MEMBER DETAILS FORM -->
+    
+    <template if:true={showMemberDetailsForm}>
+        <lightning-card title="Enter Member Details">
+            <div class="slds-p-around_medium">
+                <div class="slds-grid slds-wrap">
+                    <!-- LEFT COLUMN -->
+                    <div class="slds-col slds-size_1-of-2 slds-p-right_small">
+                        <lightning-input label="First Name" value={memberFirstName} onchange={handleMemberInputChange} data-field="firstName" required></lightning-input>
+                        <lightning-input label="Last Name" value={memberLastName} onchange={handleMemberInputChange} data-field="lastName" required></lightning-input>
+                        <lightning-input type="email" label="Email" value={memberEmail} onchange={handleMemberInputChange} data-field="email" required></lightning-input>
+                        <lightning-input type="tel" label="Phone" value={memberPhone} onchange={handleMemberInputChange} data-field="phone" required></lightning-input>
+                    </div>
+        
+                    <!-- RIGHT COLUMN (Shipping Address) -->
+                    <div class="slds-col slds-size_1-of-2 slds-p-left_small">
+                        <lightning-combobox
+                        name="country"
+                        label="Country"
+                        value={memberCountry}
+                        placeholder="Select a Country"
+                        options={countryOptions}
+                        required>
+                        </lightning-combobox>
+                        
+                                <!-- State Dropdown -->
+                                <lightning-combobox
+                                    name="state"
+                                    label="State/Province"
+                                    placeholder="Select a State/Province"
+                                    options={stateOptions}
+                                    value={selectedState}
+                                    onchange={handleStateChange}
+                                    required>
+                                </lightning-combobox>
+                        
+                                <!-- Other address fields -->
+                                <div class="slds-grid slds-gutters">
+                                <div class="slds-col slds-size_1-of-2">
+                                <lightning-input label="Street" value={memberStreet} onchange={handleMemberInputChange} data-field="street" required></lightning-input>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2">
+                                <lightning-input label="City" value={memberCity} onchange={handleMemberInputChange} data-field="city" required></lightning-input>
+                                </div>
+                                </div>
+                                <lightning-input
+                                    label="ZIP Code"
+                                    value={memberZipCode}
+                                    onchange={handleMemberInputChange}
+                                    data-field="zipcode"
+                                    required>
+                                </lightning-input>
+                            </div>
+                        </div> 
+                </div>
+                <template if:true={showPaymentLinkButton}>
+                    <div class="slds-m-top_medium slds-text-align_center">
+                        <lightning-button
+                        variant="brand"
+                        label={submitButtonLabel}
+                        onclick={createMemberAccount}>
+                        </lightning-button>
+                    </div>
+                </template>
+                <template if:true={showSubmitDetailsButton}>
+                    <div class="slds-m-top_medium slds-text-align_center">
+                        <lightning-button
+                        variant="brand"
+                        label={submitButtonLabel}
+                        onclick={handleSubmitMemberDetails}>
+                        </lightning-button>
+                    </div>
+                </template>
+                <!--<template if:true={paymentLink}>
+                    <div class="slds-m-top_medium">
+                        <p><strong>Payment Link:</strong></p>
+                        <a href={paymentLink} target="_blank">{paymentLink}</a>
+                    </div>
+                </template>-->
+            <!--</div>-->
+        </lightning-card>
+    </template>
+    <!-- SUCCESS MESSAGE -->
+    <template if:true={successMessage}>
+        <lightning-card title="">
+            <div class="slds-p-around_medium slds-text-align_center">
+                <lightning-icon icon-name="utility:success" alternative-text="Success" size="large" variant="success"></lightning-icon>
+                <p class="slds-text-heading_medium slds-m-top_medium">{successMessage}</p>
+            </div>
+        </lightning-card>
+    </template>
+
+    <!-- ERROR MESSAGE -->
+    <template if:true={errorMessage}>
+        <lightning-card title="Error">
+            <div class="slds-p-around_medium slds-text-align_center">
+                <lightning-icon icon-name="utility:error" alternative-text="Error" size="large" variant="error"></lightning-icon>
+                <p class="slds-text-color_error slds-text-heading_medium slds-m-top_medium">{errorMessage}</p>
+               
+            </div>
+        </lightning-card>
+    </template>
+</template>

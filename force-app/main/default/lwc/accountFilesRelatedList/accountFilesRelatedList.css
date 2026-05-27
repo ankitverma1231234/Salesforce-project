@@ -1,0 +1,32 @@
+/* Container — thin border matching SLDS related list */
+.table-container {
+    border: 1px solid #dddbda;
+    border-radius: 0.25rem;
+    overflow: hidden;
+}
+
+.custom-card-wrapper{
+    border: 2px solid #d8dde6; /* grey */
+    border-radius: 10px;       /* rounded corners */
+    padding: 0.8rem; 
+}
+
+/* Footer row: file count left, View All right */
+.table-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid #dddbda;
+    background: #ffffff;
+}
+.viewAllbuttonDiv{
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);    
+}
+
+.footer-count {
+    font-size: 0.75rem;
+    color: #706e6b;
+}

@@ -1,0 +1,30 @@
+.datatable-scroll {
+    max-height: 260px;      /* vertical scroll */
+    width: 100%;
+    overflow-x: auto;      /* horizontal scroll */
+    overflow-y: auto;      /* vertical scroll */
+}
+
+/* 🔥 CRITICAL: force datatable to respect width */
+.datatable-scroll lightning-datatable {
+    display: block;
+    min-width: 900px;      /* forces X scroll */
+}
+
+
+
+/* Hide accordion section arrows */ 
+lightning-accordion-section::part(summary-icon) {
+    display: none;
+}
+
+/* Alternative approach if the above doesn't work */
+.slds-accordion__summary-action-icon {
+    display: none !important;
+}
+
+/* Keep the datatable scroll styling */
+.datatable-scroll {
+    max-height: 400px;
+    overflow-y: auto;
+}

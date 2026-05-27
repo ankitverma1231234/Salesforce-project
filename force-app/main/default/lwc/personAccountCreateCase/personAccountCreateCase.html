@@ -1,0 +1,186 @@
+<template>
+    <lightning-card>
+
+        <!-- ================= HEADER ================= -->
+        <div class="slds-p-around_medium">
+            <div class="slds-text-align_center slds-text-heading_medium slds-m-bottom_medium">
+                Metriport Case
+            </div>
+
+            <lightning-input
+                label="Name"
+                value={name}
+                data-field="name"
+                onchange={handleChange}>
+            </lightning-input>
+
+            <lightning-input
+                label="Maidan Name"
+                value={maidanname}
+                data-field="maidanname"
+                onchange={handleChange}>
+            </lightning-input>
+
+            
+
+            
+            <lightning-input
+                type="date"
+                label="Date of Birth"
+                value={dob}
+                data-field="dob"
+                onchange={handleChange}>
+            </lightning-input>
+
+            <lightning-input
+                label="Street"
+                value={street}
+                data-field="street"
+                onchange={handleChange}>
+            </lightning-input>
+
+            <lightning-input
+                label="City"
+                value={city}
+                data-field="city"
+                onchange={handleChange}>
+            </lightning-input>
+
+            <lightning-input
+                label="State"
+                value={state}
+                data-field="state"
+                onchange={handleChange}>
+            </lightning-input>
+            
+
+            <lightning-input
+                label="Country"
+                value={country}
+                data-field="country"
+                onchange={handleChange}>
+            </lightning-input>
+
+                <lightning-input
+                label="Zip Code"
+                value={zipCode}
+                data-field="zipCode"
+                onchange={handleChange}>
+            </lightning-input>
+
+            <lightning-input
+                label="Phone"
+                value={phone}
+                data-field="phone"
+                onchange={handleChange}>
+            </lightning-input>
+
+
+
+
+
+            <lightning-input
+                type="email"
+                label="Email"
+                value={email}
+                data-field="email"
+                onchange={handleChange}>
+            </lightning-input>
+
+            <lightning-combobox
+                label="Biological Sex at Birth"
+                value={biologicalSex}
+                options={biologicalSexOptions}
+                data-field="biologicalSex"
+                onchange={handleChange}>
+            </lightning-combobox>
+
+
+        </div>
+
+        <!-- ================= ACCORDION ================= -->
+        <lightning-accordion allow-multiple-sections-open class="slds-m-around_medium">
+
+            <!-- ALLERGIES -->
+            <template if:true={hasAllergies}>
+                <lightning-accordion-section label="Allergies">
+                    <div class="datatable-scroll">
+                        <lightning-datatable
+                            key-field="Id"
+                            data={allergies}
+                            columns={allergyColumns}
+                            selected-rows={selectedAllergyIds}
+                            onrowselection={handleAllergySelection}>
+                        </lightning-datatable>
+                    </div>
+                </lightning-accordion-section>
+            </template>
+
+            <!-- MEDICATIONS -->
+            <template if:true={hasMedications}>
+                <lightning-accordion-section label="Medications">
+                    <div class="datatable-scroll">
+                        <lightning-datatable
+                            key-field="Id"
+                            data={medications}
+                            columns={medicationColumns}
+                            selected-rows={selectedMedicationIds}
+                            onrowselection={handleMedicationSelection}>
+                        </lightning-datatable>
+                    </div>
+                </lightning-accordion-section>
+            </template>
+
+            <!-- HEALTH CONDITIONS -->
+            <template if:true={healthConditions.length}>
+                <lightning-accordion-section label="Medical History">
+                    <div class="datatable-scroll">
+                        <lightning-datatable
+                            key-field="Id"
+                            data={healthConditions}
+                            columns={healthConditionColumns}
+                            selected-rows={selectedHealthConditionIds}
+                            onrowselection={handleHealthConditionSelection}>
+                        </lightning-datatable>
+                    </div>
+                </lightning-accordion-section>
+            </template>
+
+            <!-- HEALTH CARE PROCEDURES -->
+            <template if:true={healthCareProcedures.length}>
+                <lightning-accordion-section label="Surgical History">
+                    <div class="datatable-scroll">
+                        <lightning-datatable
+                            key-field="Id"
+                            data={healthCareProcedures}
+                            columns={healthCareProcedureColumns}
+                            selected-rows={selectedHealthCareProcedureIds}
+                            onrowselection={handleHealthCareProcedureSelection}>
+                        </lightning-datatable>
+                    </div>
+                </lightning-accordion-section>
+            </template>
+
+        </lightning-accordion>
+
+
+        <lightning-textarea
+    label="Notes"
+    value={notes}
+    data-field="notes"
+    onchange={handleChange}
+    rows="5"
+    placeholder="Enter any additional notes here...">
+</lightning-textarea>
+
+        <!-- ================= CREATE BUTTON ================= -->
+        <div class="slds-grid slds-grid_align-end slds-p-around_medium">
+            <lightning-button
+                label="Submit"
+                variant="brand"
+                onclick={handleCreateCase}>
+            </lightning-button>
+        </div>
+
+    </lightning-card>
+</template>

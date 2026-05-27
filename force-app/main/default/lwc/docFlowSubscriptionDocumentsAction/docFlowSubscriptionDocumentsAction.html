@@ -1,0 +1,238 @@
+<template>
+    <template if:true={isLoading}>
+        <div class="loading-wrap">
+            <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+        </div>
+    </template>
+
+    <template if:false={isLoading}>
+        <div class="modal-shell">
+            <div class="top-bar">
+                <lightning-tabset active-tab-value={activeTabValue}>
+                    <lightning-tab label="Member" value="Member" onactive={handleMemberActive}></lightning-tab>
+                    <lightning-tab label="Surrogate" value="Surrogate" onactive={handleSurrogateActive}></lightning-tab>
+                </lightning-tabset>
+
+                <div class="top-actions">
+                    <lightning-button-icon
+                        icon-name="utility:add"
+                        variant="border-filled"
+                        alternative-text="Add recipient"
+                        title="Add recipient"
+                        onclick={handleAddRecipient}>
+                    </lightning-button-icon>
+
+                    <lightning-button-icon
+                        icon-name="utility:refresh"
+                        variant="border-filled"
+                        alternative-text="Reset form"
+                        title="Reset form"
+                        onclick={handleResetForm}>
+                    </lightning-button-icon>
+                </div>
+            </div>
+
+            <div class="cards-container">
+                <template for:each={recipientCards} for:item="card">
+                    <section key={card.id} class="recipient-card">
+                        <button
+                            class="recipient-card__header"
+                            type="button"
+                            data-id={card.id}
+                            onclick={handleToggleCard}>
+                            <div class="recipient-card__header-left">
+                                <div class="recipient-badge">{card.sequence}</div>
+                                <div>
+                                    <div class="recipient-title">Recipient {card.sequence}</div>
+                                    <div class="recipient-subtitle">{card.type} · {card.roleLabel}</div>
+                                </div>
+                            </div>
+
+                            <div class="recipient-card__header-right">
+                                <lightning-icon icon-name={card.expandIcon} size="x-small"></lightning-icon>
+                            </div>
+                        </button>
+
+                        <template if:true={card.isExpanded}>
+                            <div class="recipient-card__body">
+                                <div class="recipient-grid">
+                                    <div class="field-block">
+                                        <div class="field-mode-row">
+                                            <div class="field-title">
+                                                <span class="required">*</span> Name
+                                            </div>
+                                            <div class="mode-toggle">
+                                                <span class="mode-label">Use field</span>
+                                                <lightning-input
+                                                    variant="label-hidden"
+                                                    type="toggle"
+                                                    checked={card.nameModeIsField}
+                                                    data-id={card.id}
+                                                    data-section="name"
+                                                    onchange={handleModeToggle}>
+                                                </lightning-input>
+                                            </div>
+                                        </div>
+
+                                        <template if:true={card.nameModeIsField}>
+                                            <lightning-combobox
+                                                label="Name field"
+                                                value={card.nameFieldApi}
+                                                options={nameFieldOptions}
+                                                data-id={card.id}
+                                                data-section="name"
+                                                onchange={handleFieldSelectionChange}>
+                                            </lightning-combobox>
+                                        </template>
+
+                                        <template if:false={card.nameModeIsField}>
+                                            <lightning-input
+                                                type="text"
+                                                label="Name"
+                                                value={card.nameManualValue}
+                                                data-id={card.id}
+                                                data-section="name"
+                                                onchange={handleManualInputChange}>
+                                            </lightning-input>
+                                        </template>
+                                    </div>
+
+                                    <div class="field-block">
+                                        <div class="field-mode-row">
+                                            <div class="field-title">
+                                                <span class="required">*</span> Email
+                                            </div>
+                                            <div class="mode-toggle">
+                                                <span class="mode-label">Use field</span>
+                                                <lightning-input
+                                                    variant="label-hidden"
+                                                    type="toggle"
+                                                    checked={card.emailModeIsField}
+                                                    data-id={card.id}
+                                                    data-section="email"
+                                                    onchange={handleModeToggle}>
+                                                </lightning-input>
+                                            </div>
+                                        </div>
+
+                                        <template if:true={card.emailModeIsField}>
+                                            <lightning-combobox
+                                                label="Email field"
+                                                value={card.emailFieldApi}
+                                                options={emailFieldOptions}
+                                                data-id={card.id}
+                                                data-section="email"
+                                                onchange={handleFieldSelectionChange}>
+                                            </lightning-combobox>
+                                        </template>
+
+                                        <template if:false={card.emailModeIsField}>
+                                            <lightning-input
+                                                type="email"
+                                                label="Email"
+                                                value={card.emailManualValue}
+                                                data-id={card.id}
+                                                data-section="email"
+                                                onchange={handleManualInputChange}>
+                                            </lightning-input>
+                                        </template>
+                                    </div>
+
+                                    <div class="field-block">
+                                        <lightning-combobox
+                                            label="Role"
+                                            value={card.role}
+                                            options={roleOptions}
+                                            data-id={card.id}
+                                            onchange={handleRoleChange}>
+                                        </lightning-combobox>
+                                    </div>
+
+                                    <div class="field-block">
+                                        <div class="field-mode-row">
+                                            <div class="field-title">Phone (optional)</div>
+                                            <div class="mode-toggle">
+                                                <span class="mode-label">Use field</span>
+                                                <lightning-input
+                                                    variant="label-hidden"
+                                                    type="toggle"
+                                                    checked={card.phoneModeIsField}
+                                                    data-id={card.id}
+                                                    data-section="phone"
+                                                    onchange={handleModeToggle}>
+                                                </lightning-input>
+                                            </div>
+                                        </div>
+
+                                        <template if:true={card.phoneModeIsField}>
+                                            <lightning-combobox
+                                                label="Phone field"
+                                                value={card.phoneFieldApi}
+                                                options={phoneFieldOptions}
+                                                data-id={card.id}
+                                                data-section="phone"
+                                                onchange={handleFieldSelectionChange}>
+                                            </lightning-combobox>
+                                        </template>
+
+                                        <template if:false={card.phoneModeIsField}>
+                                            <lightning-input
+                                                type="tel"
+                                                label="Phone"
+                                                field-level-help="Optional. Use 7 to 15 digits. You may include a leading + and common separators."
+                                                value={card.phoneManualValue}
+                                                data-id={card.id}
+                                                data-section="phone"
+                                                onchange={handleManualInputChange}>
+                                            </lightning-input>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </section>
+                </template>
+            </div>
+
+            <section class="from-address-panel">
+                <div class="from-address-title">From Address</div>
+
+                <lightning-combobox
+                    class="slds-m-top_small"
+                    label="Select from address"
+                    value={selectedFromAddressValue}
+                    options={fromAddressOptions}
+                    onchange={handleFromAddressChange}>
+                </lightning-combobox>
+
+                <template if:true={selectedFromAddressOption}>
+                    <div class="preview-box slds-m-top_small">
+                        <div><strong>Name:</strong> {selectedFromAddressOption.label}</div>
+                        <div><strong>Email:</strong> {selectedFromAddressOption.email}</div>
+                    </div>
+                </template>
+            </section>
+
+            <div class="footer-actions">
+                <lightning-button
+                    label="Cancel"
+                    onclick={handleCancel}
+                    disabled={isSaving}>
+                </lightning-button>
+
+                <lightning-button
+                    variant="brand"
+                    label="Send DocFlow Request"
+                    onclick={handleSubmit}
+                    disabled={isSaving}>
+                </lightning-button>
+            </div>
+
+            <template if:true={isSaving}>
+                <div class="saving-row">
+                    <lightning-spinner alternative-text="Saving" size="small"></lightning-spinner>
+                </div>
+            </template>
+        </div>
+    </template>
+</template>

@@ -1,0 +1,102 @@
+<template>
+    <template if:true={isLoading}>
+        <div class="loading-wrap">
+            <lightning-spinner alternative-text="Loading document detail" size="medium"></lightning-spinner>
+        </div>
+    </template>
+
+    <template if:false={isLoading}>
+        <div class="modal-shell">
+            <section class="summary-card">
+                <div class="summary-title">Void Document</div>
+
+                <div class="summary-grid">
+                    <div>
+                        <div class="summary-label">Doc Flow Document</div>
+                        <div class="summary-value">{docName}</div>
+                    </div>
+
+                    <div>
+                        <div class="summary-label">Document Runtime Id</div>
+                        <div class="summary-value break">{documentRuntimeId}</div>
+                    </div>
+
+                    <div>
+    <div class="summary-label">{sourceNameLabel}</div>
+    <div class="summary-value">{sourceNameValue}</div>
+</div>
+
+<template if:true={hasPackageRuntimeId}>
+    <div>
+        <div class="summary-label">{packageRuntimeLabel}</div>
+        <div class="summary-value break">{packageRuntimeId}</div>
+    </div>
+</template>
+
+                    <div>
+                        <div class="summary-label">Current Status</div>
+                        <div class="summary-value">{statusLabel}</div>
+                    </div>
+
+                    <div>
+                        <div class="summary-label">Source Record Id</div>
+                        <div class="summary-value break">{sourceRecordId}</div>
+                    </div>
+                </div>
+
+                <template if:true={primaryAccessLink}>
+                    <div class="link-row">
+                        <lightning-formatted-url
+                            value={primaryAccessLink}
+                            label="Open Current Access Link"
+                            target="_blank">
+                        </lightning-formatted-url>
+                    </div>
+                </template>
+
+                <template if:true={alreadyVoided}>
+                    <div class="info-banner">
+                        This document is already voided.
+                    </div>
+                </template>
+
+                <template if:false={alreadyVoided}>
+                    <div class="warning-banner">
+                        This action will void only this document and cancel active reminders/recipient activity for this document.
+                    </div>
+
+                    <lightning-textarea
+                        class="slds-m-top_medium"
+                        label="Reason (optional)"
+                        value={voidReason}
+                        maxlength="500"
+                        onchange={handleReasonChange}>
+                    </lightning-textarea>
+                </template>
+            </section>
+
+            <div class="footer-actions">
+                <lightning-button
+                    label="Close"
+                    onclick={handleClose}
+                    disabled={isWorking}>
+                </lightning-button>
+
+                <template if:false={alreadyVoided}>
+                    <lightning-button
+                        variant="destructive"
+                        label="Initiate Void"
+                        onclick={handleVoidPackage}
+                        disabled={disableVoidButton}>
+                    </lightning-button>
+                </template>
+            </div>
+
+            <template if:true={isWorking}>
+                <div class="saving-row">
+                    <lightning-spinner alternative-text="Voiding document" size="small"></lightning-spinner>
+                </div>
+            </template>
+        </div>
+    </template>
+</template>

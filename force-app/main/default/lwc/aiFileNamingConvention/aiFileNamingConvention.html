@@ -1,0 +1,418 @@
+<template>
+    <lightning-card class="naming-page-card">
+        <div class="page-shell">
+            <div class="page-header">
+                <div class="header-copy">
+                    <h1 class="page-title">BatonCare Naming Rules</h1>
+                    <p class="page-subtitle">
+                        Configure prompt-based naming rules, tag-ready criteria, execution priority,
+                        and manual test runs for BatonCare documents.
+                    </p>
+                </div>
+
+                <div class="header-actions">
+                    <lightning-button
+                        variant="neutral"
+                        label="Test Run"
+                        icon-name="utility:play"
+                        onclick={handleOpenTestRun}
+                        disabled={disableTestRun}>
+                    </lightning-button>
+
+                    <lightning-button
+                        variant="brand"
+                        label="New Rule"
+                        icon-name="utility:add"
+                        onclick={handleNewRule}>
+                    </lightning-button>
+                </div>
+            </div>
+
+            <div class="summary-strip">
+                <div class="summary-tile">
+                    <div class="summary-label">Total Rules</div>
+                    <div class="summary-value">{totalRules}</div>
+                </div>
+
+                <div class="summary-tile">
+                    <div class="summary-label">Active Rules</div>
+                    <div class="summary-value">{activeRulesCount}</div>
+                </div>
+
+                <div class="summary-tile">
+                    <div class="summary-label">Ready for Manual Test</div>
+                    <div class="summary-value">{readyForManualTestCount}</div>
+                </div>
+            </div>
+
+            <div class="table-card">
+                <div class="table-card-header">
+                    <div>
+                        <h2 class="table-title">Rule Priority & Execution</h2>
+                        <p class="table-subtitle">
+                            Lower order runs first. Select one rule and use Test Run to preview a suggestion.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="rules-table-wrapper">
+                    <table class="rules-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 70px;">Select</th>
+                                <th style="width: 90px;">Order</th>
+                                <th style="width: 210px;">Rule Name</th>
+                                <th>Criteria</th>
+                                <th>Action Prompt</th>
+                                <th style="width: 120px;">Status</th>
+                                <th style="width: 170px;">Last Test</th>
+                                <th style="width: 120px;">Actions</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            <template for:each={ruleRows} for:item="rule">
+                                <tr key={rule.id} class={rule.rowClass}>
+                                    <td>
+                                        <input
+                                            type="radio"
+                                            name="selectedRule"
+                                            value={rule.id}
+                                            checked={rule.isSelected}
+                                            onchange={handleSelectRule} />
+                                    </td>
+
+                                    <td>
+                                        <div class="order-pill">{rule.order}</div>
+                                    </td>
+
+                                    <td>
+                                        <div class="rule-name">{rule.ruleName}</div>
+                                        <template if:true={rule.flowApiName}>
+                                            <div class="rule-meta">Flow: {rule.flowApiName}</div>
+                                        </template>
+                                    </td>
+
+                                    <td>
+                                        <div class="criteria-summary">{rule.criteriaSummary}</div>
+                                        <template if:true={rule.tagsText}>
+                                            <div class="tag-preview">{rule.tagsText}</div>
+                                        </template>
+                                    </td>
+
+                                    <td>
+                                        <div class="action-summary" title={rule.actionPrompt}>
+                                            {rule.actionSummary}
+                                        </div>
+                                    </td>
+
+                                    <td>
+                                        <lightning-input
+                                            type="toggle"
+                                            variant="label-hidden"
+                                            label="Active"
+                                            checked={rule.isActive}
+                                            data-id={rule.id}
+                                            onchange={handleToggleActive}>
+                                        </lightning-input>
+                                    </td>
+
+                                    <td>
+                                        <span class="last-test">{rule.lastTestLabel}</span>
+                                    </td>
+
+                                    <td>
+                                        <div class="row-actions">
+                                            <lightning-button-icon
+                                                icon-name="utility:edit"
+                                                alternative-text="Edit"
+                                                title="Edit"
+                                                variant="border-filled"
+                                                data-id={rule.id}
+                                                onclick={handleEditRule}>
+                                            </lightning-button-icon>
+
+                                            <lightning-button-icon
+                                                icon-name="utility:delete"
+                                                alternative-text="Delete"
+                                                title="Delete"
+                                                variant="border-filled"
+                                                data-id={rule.id}
+                                                onclick={handleDeleteRule}>
+                                            </lightning-button-icon>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+
+                            <template if:false={hasRules}>
+                                <tr>
+                                    <td colspan="8">
+                                        <div class="empty-state">
+                                            No rules created yet. Click <strong>New Rule</strong> to start.
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </lightning-card>
+
+    <!-- Rule Modal -->
+    <template if:true={isRuleModalOpen}>
+        <section role="dialog" tabindex="-1" aria-modal="true" class="slds-modal slds-fade-in-open">
+            <div class="slds-modal__container modal-container modal-large">
+                <header class="slds-modal__header modal-header">
+                    <div>
+                        <p class="modal-eyebrow">RULE CONFIGURATION</p>
+                        <h2 class="slds-text-heading_medium">{ruleModalTitle}</h2>
+                    </div>
+
+                    <lightning-button-icon
+                        icon-name="utility:close"
+                        alternative-text="Close"
+                        title="Close"
+                        variant="bare-inverse"
+                        onclick={handleCloseRuleModal}>
+                    </lightning-button-icon>
+                </header>
+
+                <div class="slds-modal__content slds-p-around_large modal-body">
+                    <div class="modal-grid top-grid">
+                        <lightning-input
+                            label="Rule Name"
+                            value={draftRule.ruleName}
+                            data-field="ruleName"
+                            oninput={handleRuleFieldChange}
+                            onchange={handleRuleFieldChange}>
+                        </lightning-input>
+
+                        <lightning-input
+                            type="number"
+                            min="1"
+                            label="Order"
+                            value={draftRule.order}
+                            data-field="order"
+                            oninput={handleRuleFieldChange}
+                            onchange={handleRuleFieldChange}>
+                        </lightning-input>
+
+                        <lightning-input
+                            type="toggle"
+                            label="Active"
+                            checked={draftRule.isActive}
+                            data-field="isActive"
+                            onchange={handleRuleFieldChange}>
+                        </lightning-input>
+                    </div>
+
+                    <div class="section-card">
+                        <div class="section-header">
+                            <div>
+                                <h3 class="section-title">Criteria</h3>
+                                <p class="section-subtitle">
+                                    A rule can evaluate prompt criteria, tags, or a combination of both.
+                                </p>
+                            </div>
+                        </div>
+
+                        <lightning-radio-group
+                            label="Match Logic"
+                            type="button"
+                            options={criteriaModeOptions}
+                            value={draftRule.criteriaMode}
+                            data-field="criteriaMode"
+                            onchange={handleRuleFieldChange}>
+                        </lightning-radio-group>
+
+                        <div class="modal-grid criteria-grid">
+                            <div class="criteria-box">
+                                <div class="criteria-box-title">Prompt Criteria</div>
+                                <lightning-textarea
+                                    label="Instruction / Condition"
+                                    value={draftRule.criteriaPrompt}
+                                    data-field="criteriaPrompt"
+                                    oninput={handleRuleFieldChange}
+                                    onchange={handleRuleFieldChange}
+                                    placeholder="Example: If the document mentions radiology, diagnostic imaging, scan notes, or test results, consider this rule a match.">
+                                </lightning-textarea>
+                            </div>
+
+                            <div class="criteria-box">
+                                <div class="criteria-box-title">Tags</div>
+                                <lightning-input
+                                    type="text"
+                                    label="Tags (UI only for now)"
+                                    value={draftRule.tagsText}
+                                    data-field="tagsText"
+                                    oninput={handleRuleFieldChange}
+                                    onchange={handleRuleFieldChange}
+                                    placeholder="Example: radiology, x-ray, scan, imaging">
+                                </lightning-input>
+
+                                <p class="helper-text">
+                                    Add one or multiple tags separated by commas. This remains UI-only in this iteration.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section-card">
+                        <div class="section-header">
+                            <div>
+                                <h3 class="section-title">Action</h3>
+                                <p class="section-subtitle">
+                                    Instead of a formula editor, define the naming behavior as a prompt.
+                                </p>
+                            </div>
+                        </div>
+
+                        <lightning-textarea
+                            label="Action Prompt"
+                            value={draftRule.actionPrompt}
+                            data-field="actionPrompt"
+                            oninput={handleRuleFieldChange}
+                            onchange={handleRuleFieldChange}
+                            placeholder="Example: Rename the file using Account Name + Document Category + Month Year in a clean readable format.">
+                        </lightning-textarea>
+
+                        <div class="flow-field">
+                            <lightning-input
+                                type="text"
+                                label="Flow API Name (optional / future-ready)"
+                                value={draftRule.flowApiName}
+                                data-field="flowApiName"
+                                oninput={handleRuleFieldChange}
+                                onchange={handleRuleFieldChange}
+                                placeholder="Example: AI_File_Naming_Action_Flow">
+                            </lightning-input>
+                        </div>
+                    </div>
+                </div>
+
+                <footer class="slds-modal__footer modal-footer">
+                    <lightning-button
+                        variant="neutral"
+                        label="Cancel"
+                        onclick={handleCloseRuleModal}>
+                    </lightning-button>
+
+                    <lightning-button
+                        variant="brand"
+                        label="Save Rule"
+                        onclick={handleSaveRule}>
+                    </lightning-button>
+                </footer>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+
+ 
+    <!-- Test Modal -->
+<template if:true={isTestModalOpen}>
+    <section role="dialog" tabindex="-1" aria-modal="true" class="slds-modal slds-fade-in-open">
+        <div class="slds-modal__container modal-container test-modal-container">
+            <header class="slds-modal__header modal-header test-modal-header">
+                <div class="modal-title-wrap">
+                    <p class="modal-eyebrow">MANUAL TEST</p>
+                    <h2 class="slds-text-heading_medium modal-main-title">Test Run</h2>
+                </div>
+            </header>
+
+            <div class="slds-modal__content slds-p-around_large modal-body test-modal-body">
+                <div class="selected-rule-banner">
+                    <div class="selected-rule-label">Selected Rule</div>
+                    <div class="selected-rule-value">{selectedRuleName}</div>
+                </div>
+
+                <div class="test-grid">
+                    <lightning-record-picker
+                        label="Select Account"
+                        placeholder="Search Account"
+                        object-api-name="Account"
+                        value={testAccountId}
+                        display-info={accountDisplayInfo}
+                        matching-info={accountMatchingInfo}
+                        onchange={handleAccountChange}>
+                    </lightning-record-picker>
+
+                    <template if:true={selectedAccountMeta}>
+                        <div class="selected-account-meta">
+                            <span>{selectedAccountMeta}</span>
+                        </div>
+                    </template>
+
+                    <template if:true={testAccountId}>
+                        <div>
+                            <template if:true={isLoadingFiles}>
+                                <div class="spinner-shell">
+                                    <lightning-spinner alternative-text="Loading files" size="small"></lightning-spinner>
+                                </div>
+                            </template>
+
+                            <template if:false={isLoadingFiles}>
+                                <lightning-combobox
+                                    label="Select File"
+                                    placeholder="Choose a file"
+                                    value={testFileId}
+                                    options={fileOptions}
+                                    onchange={handleFileChange}>
+                                </lightning-combobox>
+
+                                <template if:true={showNoFilesMessage}>
+                                    <p class="helper-text top-gap">No linked files found for this account.</p>
+                                </template>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+                <div class="test-actions">
+                    <lightning-button
+                        variant="brand"
+                        label="Start Test"
+                        icon-name="utility:play"
+                        onclick={handleStartTest}
+                        disabled={disableStartTest}>
+                    </lightning-button>
+                </div>
+
+                <template if:true={testResult}>
+                    <div class="test-result-card">
+                        <div class="result-label">Suggested Name</div>
+                        <div class="result-title">{testResult.title}</div>
+
+                        <div class="result-grid">
+                            <div>
+                                <div class="result-sub-label">Matched By</div>
+                                <div class="result-copy">{testResult.criteria}</div>
+                            </div>
+
+                            <div>
+                                <div class="result-sub-label">Action Used</div>
+                                <div class="result-copy">{testResult.action}</div>
+                            </div>
+                        </div>
+
+                        <div class="result-sub-label top-gap">Summary</div>
+                        <div class="result-copy">{testResult.summary}</div>
+                    </div>
+                </template>
+            </div>
+
+            <footer class="slds-modal__footer modal-footer">
+                <lightning-button
+                    variant="neutral"
+                    label="Close"
+                    onclick={handleCloseTestModal}>
+                </lightning-button>
+            </footer>
+        </div>
+    </section>
+    <div class="slds-backdrop slds-backdrop_open"></div>
+</template>
+</template>

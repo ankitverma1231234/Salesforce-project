@@ -1,0 +1,94 @@
+<template>
+    <div class="aaa-wrapper">
+        <div class="aaa-card">
+            <header class="aaa-header">
+                <h1>Authorized Account Access</h1>
+                <p>Confirm or deny the request below to protect your BatonCare account.</p>
+            </header>
+
+            <template if:true={isLoading}>
+                <div class="aaa-state">
+                    <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+                </div>
+            </template>
+
+            <template if:true={showForm}>
+                <div class="aaa-summary">
+                    <p>
+                        <strong>{requestorName}</strong> is requesting authorized access to your BatonCare account.
+                        With this access, they may view and manage account information on your behalf, including
+                        sensitive health information protected under HIPAA and, where applicable, 42 C.F.R. Part 2.
+                    </p>
+                </div>
+
+                <div class="aaa-field">
+                    <lightning-input
+                        type="text"
+                        label="Enter the 6-digit verification code from your email"
+                        value={verificationCode}
+                        onchange={handleCodeChange}
+                        maxlength="6"
+                        pattern="[0-9]{6}"
+                        message-when-pattern-mismatch="Please enter 6 digits"
+                        autocomplete="one-time-code"
+                        disabled={isSubmitting}>
+                    </lightning-input>
+                </div>
+
+                <template if:true={errorMessage}>
+                    <div class="aaa-error" role="alert">{errorMessage}</div>
+                </template>
+
+                <div class="aaa-actions">
+                    <lightning-button
+                        variant={approveVariant}
+                        label="Approve Access"
+                        onclick={handleApprove}
+                        disabled={isSubmitting}>
+                    </lightning-button>
+                    <lightning-button
+                        variant={rejectVariant}
+                        label="Deny Request"
+                        onclick={handleReject}
+                        disabled={isSubmitting}>
+                    </lightning-button>
+                </div>
+
+                <template if:true={isSubmitting}>
+                    <div class="aaa-state"><lightning-spinner alternative-text="Submitting" size="small"></lightning-spinner></div>
+                </template>
+            </template>
+
+            <template if:true={isSuccess}>
+                <div class="aaa-success" role="status">
+                    <h2>All set</h2>
+                    <p>{successMessage}</p>
+                    <p class="aaa-muted">You can safely close this page.</p>
+                </div>
+            </template>
+
+            <template if:true={isInvalid}>
+                <div class="aaa-error" role="alert">
+                    <h2>Link not recognized</h2>
+                    <p>{errorMessage}</p>
+                    <p class="aaa-muted">If you did not request this, you can safely ignore it.</p>
+                </div>
+            </template>
+
+            <template if:true={isExpired}>
+                <div class="aaa-error" role="alert">
+                    <h2>Link expired</h2>
+                    <p>{errorMessage}</p>
+                    <p class="aaa-muted">Ask the requestor to submit a new request.</p>
+                </div>
+            </template>
+
+            <template if:true={isAlready}>
+                <div class="aaa-info" role="status">
+                    <h2>Already handled</h2>
+                    <p>{errorMessage}</p>
+                </div>
+            </template>
+        </div>
+    </div>
+</template>
