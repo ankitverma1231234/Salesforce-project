@@ -24,18 +24,17 @@ public class SendMetriportDataToPortal {
                 System.debug('No data found for contact: ' + contactId);
                 return;
             }
-            Contact c = [SELECT AccountId FROM Contact WHERE Id = :contactId LIMIT 1];
-            preparePublicLinks(c.AccountId, contactId);
             
+            Contact c = [SELECT AccountId FROM Contact WHERE Id = :contactId LIMIT 1];
             HttpResponse response = sendHttpRequest(endpoint, payload);
             if (response != null) {
                 System.debug('Lite API Status: ' + response.getStatusCode());
                 System.debug('Lite API Body: ' + response.getBody());
                 if (response.getStatusCode() == 200) {
-                    updateSendMemberToPortal(c.AccountId);
+                    updateSendMemberToPortal(c.AccountId); 
                     System.debug('Send_Member_to_portal__c updated successfully');
                 }
-            }
+            } 
             
         } catch (Exception ex) {
             System.debug(LoggingLevel.ERROR,
@@ -77,6 +76,7 @@ public class SendMetriportDataToPortal {
             ];
             
             payload.put('contactId', String.valueOf(contactId));
+            payload.put('is_template', false);
             payload.put('basic_details', getBasicDetails(c));
             payload.put('allergies', getAllergies(c.AccountId));
             payload.put('medications', getMedications(c.AccountId));
@@ -86,7 +86,9 @@ public class SendMetriportDataToPortal {
             payload.put('healthcare_facilities', getHealthcareFacilities(c.AccountId));
             payload.put('healthcare_professionals', getHealthcareProfessionals(c.AccountId));
             payload.put('insurance_details', getInsuranceDetails(c.AccountId));
-            payload.put('documents', getDocuments(c.AccountId, c.Id));
+            payload.put('documents', getDocuments(c.AccountId));
+            payload.put('labs', getLabs(c.AccountId));
+            payload.put('immunization', getImmunizations(c.AccountId));
             
         } catch (Exception ex) {
             System.debug('Error building lite payload: ' + ex.getMessage());
@@ -180,91 +182,91 @@ public class SendMetriportDataToPortal {
     }
     
     public static void processFamilySync(Id parentAccountId) {
-    BatonPortalAPI__c apiConfig = BatonPortalAPI__c.getOrgDefaults();
-    if (apiConfig == null || String.isBlank(apiConfig.Api_key_2__c)) {
-        System.debug(LoggingLevel.ERROR, 'Api_key_2__c not configured');
-        return;
-    }
-    String endpoint = apiConfig.Api_key_2__c;
-
-    List<Account_Head_Relationship__c> junctionRecords = [
-        SELECT Id,
-               Authorized_Account_Access__c,
-               Authorized_Account_Access__r.Id,
-               Authorized_Account_Access__r.FirstName,
-               Authorized_Account_Access__r.LastName,
-               Authorized_Account_Access__r.Name,
-               Authorized_Account_Access__r.PersonContactId,
-               Relationship__c,
-               Portal_Access_Status__c,
-               Member_Account__c,
-               Member_Account__r.Id,
-               Member_Account__r.FirstName,
-               Member_Account__r.LastName,
-               Member_Account__r.Family_Head__c,
-               Member_Account__r.Name,
-               Member_Account__r.PersonContactId,
-               Request_Access__c,
-               Give_Access__c
-              FROM Account_Head_Relationship__c
-             WHERE Member_Account__c = :parentAccountId  
+        BatonPortalAPI__c apiConfig = BatonPortalAPI__c.getOrgDefaults();
+        if (apiConfig == null || String.isBlank(apiConfig.Api_key_2__c)) {
+            System.debug(LoggingLevel.ERROR, 'Api_key_2__c not configured');
+            return;
+        }
+        String endpoint = apiConfig.Api_key_2__c;
+        
+        List<Account_Head_Relationship__c> junctionRecords = [
+            SELECT Id,
+            Authorized_Account_Access__c,
+            Authorized_Account_Access__r.Id,
+            Authorized_Account_Access__r.FirstName,
+            Authorized_Account_Access__r.LastName,
+            Authorized_Account_Access__r.Name,
+            Authorized_Account_Access__r.PersonContactId,
+            Relationship__c,
+            Portal_Access_Status__c,
+            Member_Account__c,
+            Member_Account__r.Id,
+            Member_Account__r.FirstName,
+            Member_Account__r.LastName,
+            Member_Account__r.Family_Head__c,
+            Member_Account__r.Name,
+            Member_Account__r.PersonContactId,
+            Request_Access__c,
+            Give_Access__c
+            FROM Account_Head_Relationship__c
+            WHERE Member_Account__c = :parentAccountId  
             AND Member_Account__c != null
             AND Authorized_Account_Access__c != null];
-
-    if (junctionRecords.isEmpty()) return;
-
-    Account headAccount = junctionRecords[0].Member_Account__r;
-
-    Map<String, Object> parentMap = new Map<String, Object>();
-    parentMap.put('accountId',  String.valueOf(headAccount.Id));
-    parentMap.put('first_name', headAccount.FirstName != null ? headAccount.FirstName : '');
-    parentMap.put('last_name',  headAccount.LastName  != null ? headAccount.LastName  : '');
-    parentMap.put('id',         headAccount.PersonContactId != null ? String.valueOf(headAccount.PersonContactId) : null);
-    parentMap.put('is_head',    headAccount.Family_Head__c);
-
-    Map<Id, Map<String, Object>> childrenByAccountId = new Map<Id, Map<String, Object>>();
-
-    for (Account_Head_Relationship__c jr : junctionRecords) {
-        if (jr.Authorized_Account_Access__r == null) continue;
-
-        Id childAccId = jr.Authorized_Account_Access__r.Id;
-        if (childrenByAccountId.containsKey(childAccId)) continue; 
-
-        Map<String, Object> childMap = new Map<String, Object>();
-        childMap.put('accountId',       String.valueOf(childAccId));
-        childMap.put('account_headrelationshipid', String.valueOf(jr.Id));
-        childMap.put('name',            jr.Authorized_Account_Access__r.Name != null ? jr.Authorized_Account_Access__r.Name: '');
-        childMap.put('relationship',    jr.Relationship__c != null ? jr.Relationship__c : '');
-        childMap.put('portal_status',   jr.Portal_Access_Status__c != null ? jr.Portal_Access_Status__c : '');
-        childMap.put('id',              jr.Authorized_Account_Access__r.PersonContactId != null ? String.valueOf(jr.Authorized_Account_Access__r.PersonContactId) : null);
-        childMap.put('request_access',  jr.Request_Access__c);
-        childMap.put('give_access',     jr.Give_Access__c);
-        childMap.put('headAccountName', headAccount.Name != null ? headAccount.Name : '');
-        childMap.put('is_delete',       false);
-        childrenByAccountId.put(childAccId, childMap);
-    }
-
-    Map<String, Object> payload = new Map<String, Object>();
-    payload.put('is_template', false);
-    payload.put('contactId', headAccount.PersonContactId != null ? String.valueOf(headAccount.PersonContactId) : null);
-    payload.put('parent',    parentMap);
-    payload.put('children',  childrenByAccountId.values()); 
-
-    try {
-        HttpResponse res = sendHttpRequest(endpoint, payload);
-        if (res != null) {
-            if (res.getStatusCode() >= 200 && res.getStatusCode() < 300) {
-                System.debug('Family data sent - Parent Account: ' + parentAccountId);
-            } else {
-                System.debug(LoggingLevel.ERROR, 'Family send failed: ' + res.getStatusCode() + ' ' + res.getBody());
-                System.debug(LoggingLevel.ERROR, 'Request Body: ' + JSON.serialize(payload));
-            }
+        
+        if (junctionRecords.isEmpty()) return;
+        
+        Account headAccount = junctionRecords[0].Member_Account__r;
+        
+        Map<String, Object> parentMap = new Map<String, Object>();
+        parentMap.put('accountId',  String.valueOf(headAccount.Id));
+        parentMap.put('first_name', headAccount.FirstName != null ? headAccount.FirstName : '');
+        parentMap.put('last_name',  headAccount.LastName  != null ? headAccount.LastName  : '');
+        parentMap.put('id',         headAccount.PersonContactId != null ? String.valueOf(headAccount.PersonContactId) : null);
+        parentMap.put('is_head',    headAccount.Family_Head__c);
+        
+        Map<Id, Map<String, Object>> childrenByAccountId = new Map<Id, Map<String, Object>>();
+        
+        for (Account_Head_Relationship__c jr : junctionRecords) {
+            if (jr.Authorized_Account_Access__r == null) continue;
+            
+            Id childAccId = jr.Authorized_Account_Access__r.Id;
+            if (childrenByAccountId.containsKey(childAccId)) continue; 
+            
+            Map<String, Object> childMap = new Map<String, Object>();
+            childMap.put('accountId',       String.valueOf(childAccId));
+            childMap.put('account_headrelationshipid', String.valueOf(jr.Id));
+            childMap.put('name',            jr.Authorized_Account_Access__r.Name != null ? jr.Authorized_Account_Access__r.Name: '');
+            childMap.put('relationship',    jr.Relationship__c != null ? jr.Relationship__c : '');
+            childMap.put('portal_status',   jr.Portal_Access_Status__c != null ? jr.Portal_Access_Status__c : '');
+            childMap.put('id',              jr.Authorized_Account_Access__r.PersonContactId != null ? String.valueOf(jr.Authorized_Account_Access__r.PersonContactId) : null);
+            childMap.put('request_access',  jr.Request_Access__c);
+            childMap.put('give_access',     jr.Give_Access__c);
+            childMap.put('headAccountName', headAccount.Name != null ? headAccount.Name : '');
+            childMap.put('is_delete',       false);
+            childrenByAccountId.put(childAccId, childMap);
         }
-    } catch (Exception ex) {
-        System.debug(LoggingLevel.ERROR, 'Family callout error: ' + ex.getMessage());
+        
+        Map<String, Object> payload = new Map<String, Object>();
+        payload.put('is_template', false);
+        payload.put('contactId', headAccount.PersonContactId != null ? String.valueOf(headAccount.PersonContactId) : null);
+        payload.put('parent',    parentMap);
+        payload.put('children',  childrenByAccountId.values()); 
+        
+        try {
+            HttpResponse res = sendHttpRequest(endpoint, payload);
+            if (res != null) {
+                if (res.getStatusCode() >= 200 && res.getStatusCode() < 300) {
+                    System.debug('Family data sent - Parent Account: ' + parentAccountId);
+                } else {
+                    System.debug(LoggingLevel.ERROR, 'Family send failed: ' + res.getStatusCode() + ' ' + res.getBody());
+                    System.debug(LoggingLevel.ERROR, 'Request Body: ' + JSON.serialize(payload));
+                }
+            }
+        } catch (Exception ex) {
+            System.debug(LoggingLevel.ERROR, 'Family callout error: ' + ex.getMessage());
+        }
     }
-}
-
+    
     private static List<Map<String, Object>> getAllergies(Id contactId) {
         List<Map<String, Object>> allergies = new List<Map<String, Object>>();
         for (AllergyIntolerance a : [
@@ -505,186 +507,133 @@ public class SendMetriportDataToPortal {
             System.debug('Error getting insurance details: ' + e.getMessage());
         }
         return insurance;
-    }    
+    } 
     
-    public static List<Map<String, Object>> getDocuments(Id accountId, Id contactId) {
-    List<Map<String, Object>> documents = new List<Map<String, Object>>();
-    if (accountId == null) return documents;
-
-    List<ContentDocumentLink> cdlList = [
-        SELECT Id, ContentDocumentId, LinkedEntityId, ShareType, Visibility,
-               ContentDocument.Title,
-               ContentDocument.FileType,
-               ContentDocument.FileExtension,
-               ContentDocument.ContentSize,
-               ContentDocument.CreatedDate,
-               ContentDocument.CreatedById,
-               ContentDocument.LastModifiedDate,
-               ContentDocument.LastModifiedById,
-               ContentDocument.LatestPublishedVersion.Related_File__c,
-               ContentDocument.OwnerId,
-               ContentDocument.LatestPublishedVersionId,
-               ContentDocument.LatestPublishedVersion.VersionNumber,
-               ContentDocument.LatestPublishedVersion.PathOnClient
-        FROM ContentDocumentLink
-        WHERE LinkedEntityId = :accountId
-    ];
-
-    if (cdlList.isEmpty()) return documents;
-
-    Set<Id> contentDocumentIds = new Set<Id>();
-    for (ContentDocumentLink cdl : cdlList) {
-        contentDocumentIds.add(cdl.ContentDocumentId);
-    }
-
-    Map<Id, ContentVersion> docIdToVersionMap = new Map<Id, ContentVersion>();
-    for (ContentVersion cv : [
-        SELECT Id, ContentDocumentId, Service_Date_Time__c,
-               Description, Organization_Name__c, CreatedDate
-        FROM ContentVersion
-        WHERE ContentDocumentId IN :contentDocumentIds
-          AND IsLatest = true
-          AND Send_File_to_Portal__c = true
-        ORDER BY CreatedDate DESC
-    ]) {
-        if (!docIdToVersionMap.containsKey(cv.ContentDocumentId)) {
-            docIdToVersionMap.put(cv.ContentDocumentId, cv);
+    public static List<Map<String, Object>> getLabs(Id accountId) {
+        List<Map<String, Object>> labs = new List<Map<String, Object>>();
+        if (accountId == null) return labs;
+        try{
+            List<CareObservation> records = [
+                SELECT Id,Name, ObservedSubjectId, Category, ObservationStatus, 
+                Range_High__c, Value_Quantity__c,ValueInterpretation,EffectiveDateTime
+                FROM CareObservation
+                WHERE ObservedSubjectId = :accountId ORDER BY CreatedDate DESC
+            ];
+            
+            for (CareObservation record : records) {
+                Map<String, Object> data = new Map<String, Object>();
+                data.put('id',                record.Id);
+                data.put('Name', record.Name != null ? record.Name : '');
+                data.put('accountId',         record.ObservedSubjectId);
+                data.put('Category',          record.Category);
+                data.put('ObservationStatus', record.ObservationStatus);
+                data.put('Range_High',        record.Range_High__c);
+                data.put('Value_Quantity',    record.Value_Quantity__c);
+                data.put('Value_Interpretation',  record.ValueInterpretation);
+                data.put('Effective_Date',  record.EffectiveDateTime);
+                labs.add(data);
+            }  
+        } catch (Exception  ex) {
+            System.debug('Error in getLabs: ' + ex.getMessage());
+            
         }
+        return labs;
     }
-
-    if (docIdToVersionMap.isEmpty()) return documents;
-
-    Map<Id, String> docIdToPublicUrlMap = getOrCreatePublicLinks(docIdToVersionMap);
-
-    Set<Id> processedDocs = new Set<Id>();
-
-    for (ContentDocumentLink cdl : cdlList) {
-        if (processedDocs.contains(cdl.ContentDocumentId)) continue;
-        processedDocs.add(cdl.ContentDocumentId);
-
-        ContentVersion cv = docIdToVersionMap.get(cdl.ContentDocumentId);
-        if (cv == null) continue;
-
-        Map<String, Object> doc = new Map<String, Object>();
-
-        doc.put('ContentDocumentId', cdl.ContentDocumentId);
-        doc.put('Id', cv.Id);
-        doc.put('ShareType', cdl.ShareType);
-        doc.put('Visibility', cdl.Visibility);
-        doc.put('Title', cdl.ContentDocument.Title);
-        doc.put('FileType', cdl.ContentDocument.FileType);
-        doc.put('FileExtension', cdl.ContentDocument.FileExtension);
-        doc.put('contactId', contactId != null ? String.valueOf(contactId) : '');
-        doc.put('ContentSize', cdl.ContentDocument.ContentSize);
-        doc.put('CreatedDate', cv.Service_Date_Time__c); 
-        doc.put('CreatedById', cdl.ContentDocument.CreatedById);
-        doc.put('LastModifiedDate', cdl.ContentDocument.LastModifiedDate);
-        doc.put('LastModifiedById', cdl.ContentDocument.LastModifiedById);
-        doc.put('OwnerId', cdl.ContentDocument.OwnerId);
-        doc.put('LatestPublishedVersionId', cdl.ContentDocument.LatestPublishedVersionId);
-        doc.put('relatedFile',
-                cdl.ContentDocument.LatestPublishedVersion.Related_File__c);
-        doc.put('PublicUrl', docIdToPublicUrlMap.get(cdl.ContentDocumentId));
-        doc.put('VersionNumber',
-            String.valueOf(cdl.ContentDocument.LatestPublishedVersion.VersionNumber));
-        doc.put('PathOnClient',
-            cdl.ContentDocument.LatestPublishedVersion.PathOnClient);
-        doc.put('Description', cv.Description);
-        doc.put('Organization', cv.Organization_Name__c); 
-
-        documents.add(doc);
-    }
-
-    return documents;
-}
-
-
-private static void preparePublicLinks(Id accountId, Id contactId) {
-    if (accountId == null) return;
-
-    List<ContentDocumentLink> cdlList = [
-        SELECT ContentDocumentId
-        FROM ContentDocumentLink
-        WHERE LinkedEntityId = :accountId
-    ];
-    if (cdlList.isEmpty()) return;
-
-    Set<Id> contentDocumentIds = new Set<Id>();
-    for (ContentDocumentLink cdl : cdlList) {
-        contentDocumentIds.add(cdl.ContentDocumentId);
-    }
-
-    Map<Id, ContentVersion> docIdToVersionMap = new Map<Id, ContentVersion>();
-    for (ContentVersion cv : [
-        SELECT Id, ContentDocumentId
-        FROM ContentVersion
-        WHERE ContentDocumentId IN :contentDocumentIds
-          AND IsLatest             = true
-          AND Send_File_to_Portal__c = true
-        ORDER BY CreatedDate DESC
-    ]) {
-        if (!docIdToVersionMap.containsKey(cv.ContentDocumentId)) {
-            docIdToVersionMap.put(cv.ContentDocumentId, cv);
-        }
-    }
-    if (docIdToVersionMap.isEmpty()) return;
-
-    Set<Id> versionIds = new Set<Id>();
-    for (ContentVersion cv : docIdToVersionMap.values()) {
-        versionIds.add(cv.Id);
-    }
-
-    Set<Id> alreadyLinked = new Set<Id>();
-    for (ContentDistribution cd : [
-        SELECT ContentVersionId
-        FROM ContentDistribution
-        WHERE ContentVersionId IN :versionIds
-    ]) {
-        alreadyLinked.add(cd.ContentVersionId);
-    }
-
-  
-    List<ContentDistribution> toInsert = new List<ContentDistribution>();
-    for (ContentVersion cv : docIdToVersionMap.values()) {
-        if (!alreadyLinked.contains(cv.Id)) {
-            ContentDistribution cd = new ContentDistribution();
-            cd.Name                              = 'Public Link for Portal';
-            cd.ContentVersionId                  = cv.Id;
-            cd.PreferencesAllowOriginalDownload  = true;
-            cd.PreferencesAllowPDFDownload       = true;
-            cd.PreferencesNotifyOnVisit          = false;
-            cd.PreferencesPasswordRequired       = false;
-            cd.PreferencesLinkLatestVersion      = true;
-            toInsert.add(cd);
-        }
-    }
-
-    if (!toInsert.isEmpty()) {
-        insert toInsert; 
-    }
-}
     
-    private static Map<Id, String> getOrCreatePublicLinks(
-        Map<Id, ContentVersion> docIdToVersionMap) {
-
-    Map<Id, String> resultMap = new Map<Id, String>();
-    if (docIdToVersionMap.isEmpty()) return resultMap;
-
-    Set<Id> versionIds = new Set<Id>();
-    for (ContentVersion cv : docIdToVersionMap.values()) {
-        versionIds.add(cv.Id);
+     public static List<Map<String, Object>> getImmunizations(Id accountId) {
+        List<Map<String, Object>> Immunizations = new List<Map<String, Object>>();
+        if (accountId == null) return Immunizations;
+        try{
+            List<PatientImmunization> records = [
+                SELECT Id, Vaccine_Name__c,Status,VaccinationDate, PatientId FROM 
+                PatientImmunization WHERE PatientId = :accountId ORDER BY CreatedDate DESC
+                ];
+            
+            for (PatientImmunization record : records) {
+                Map<String, Object> data = new Map<String, Object>();
+                data.put('id',                record.Id);
+                data.put('name', record.Vaccine_Name__c != null ? record.Vaccine_Name__c : '');
+                data.put('accountId',         record.PatientId);
+                data.put('status',          record.Status);
+                data.put('vaccine_date', record.VaccinationDate);
+             
+                Immunizations.add(data);
+            }  
+        } catch (Exception  ex) {
+            System.debug('Error in vaccine: ' + ex.getMessage());
+            
+        }
+        return Immunizations;
     }
-
-    for (ContentDistribution cd : [
-        SELECT ContentDocumentId, ContentDownloadUrl
-        FROM ContentDistribution
-        WHERE ContentVersionId IN :versionIds
-    ]) {
-        resultMap.put(cd.ContentDocumentId, cd.ContentDownloadUrl);
+    
+    public static List<Map<String, Object>> getDocuments(Id accountId) {
+        List<Map<String, Object>> documents = new List<Map<String, Object>>();
+        if (accountId == null) return documents;
+        
+        try {
+            List<fra__Entity_Storage__c> entityStorages = [
+                SELECT Id,
+                Name,
+                fra__Associated_Record__c,
+                fra__File_Store_Record_Id__c,
+                fra__Entity_Folder_Name__c
+                FROM fra__Entity_Storage__c Where fra__File_Store_Record_Id__c = :String.valueOf(accountId)];
+            
+            if (entityStorages.isEmpty()) return documents;
+            
+            Set<Id> entityStorageIds = new Set<Id>();
+            for (fra__Entity_Storage__c es : entityStorages) {
+                entityStorageIds.add(es.Id);
+            }
+            
+            List<fra__File_Storage__c> fileStorages = [
+                SELECT Id,
+                fra__File_Id__c,
+                Fra_AI_Source_File_Id__c,
+                Name,
+                Send_to_Portal__c,
+                fra__File_Public_Url__c,
+                fra__File_Size__c,
+                fra__File_Type__c,
+                Source_Type__c,
+                fra__Internal_File_Id__c,
+                Date_of_Service_Display__c,
+                Document_Type__c,
+                Category__c,
+                fra__Entity_Storage__c,
+                Related_Summary_File__c
+                FROM fra__File_Storage__c
+                WHERE fra__Entity_Storage__c IN :entityStorageIds AND Send_to_Portal__c = TRUE];
+            
+            if (fileStorages.isEmpty()) return documents;
+            
+            for (fra__File_Storage__c fs : fileStorages) {
+                Map<String, Object> doc = new Map<String, Object>();
+                doc.put('Id',            fs.fra__Internal_File_Id__c);
+                doc.put('recordId',      String.valueOf(fs.Id));          
+                doc.put('Title',         fs.Name != null                    ? fs.Name                        : '');
+                doc.put('PublicUrl',     fs.fra__File_Public_Url__c != null ? fs.fra__File_Public_Url__c     : '');
+                doc.put('ContentSize',      fs.fra__File_Size__c != null       ? String.valueOf(fs.fra__File_Size__c) : '');
+                doc.put('FileType',      fs.fra__File_Type__c != null       ? fs.fra__File_Type__c           : '');
+                doc.put('source_type',   fs.Source_Type__c != null          ? fs.Source_Type__c              : '');
+                doc.put('CreatedDate',   fs.Date_of_Service_Display__c != null 
+                        ? String.valueOf(fs.Date_of_Service_Display__c) : '');
+                doc.put('document_type', fs.Document_Type__c != null        ? fs.Document_Type__c            : '');
+                doc.put('category',      fs.Category__c != null             ? fs.Category__c                 : '');
+                doc.put('accountId',     String.valueOf(accountId));
+                doc.put('relatedFile',    fs.Fra_AI_Source_File_Id__c != null ? fs.Fra_AI_Source_File_Id__c     : '');
+                documents.add(doc);
+            }
+            
+        } catch (Exception e) {
+            System.debug(LoggingLevel.ERROR,
+                         'getDocuments (FSR) error: ' + e.getMessage() +
+                         '\nStack: ' + e.getStackTraceString());
+        }
+        
+        return documents;
     }
-
-    return resultMap;
-}
+    
     private static HttpResponse sendHttpRequest(String endpoint, Map<String, Object> payload) {
         HttpRequest req = new HttpRequest();
         req.setEndpoint(endpoint);

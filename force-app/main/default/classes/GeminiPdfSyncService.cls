@@ -117,6 +117,12 @@ public with sharing class GeminiPdfSyncService {
             LIMIT 1
         ];
 
+        DocumentProcessingTraceabilityService.linkAiSummaryToProcessingLog(
+            sourceContentDocumentId,
+            insertedVersion.Id,
+            insertedVersion.ContentDocumentId
+        );
+
         GeminiFileInsightsController.SavedFileResult result = new GeminiFileInsightsController.SavedFileResult();
         result.contentVersionId = insertedVersion.Id;
         result.contentDocumentId = insertedVersion.ContentDocumentId;

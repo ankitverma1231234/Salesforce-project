@@ -1,0 +1,10 @@
+<template>
+    <lightning-card>
+        <div class="slds-p-around_medium slds-align_absolute-center slds-text-align_center">
+            <template if:true={isWorking}>
+                <lightning-spinner alternative-text="Working" size="medium"></lightning-spinner>
+                <p class="slds-m-top_medium">{statusMessage}</p>
+            </template>
+        </div>
+    </lightning-card>
+</template>

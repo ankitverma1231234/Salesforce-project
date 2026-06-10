@@ -1,7 +1,3 @@
-/**
-* Wrapper classes for ContactMedicalDataAPI
-* Contains all response and data structures
-*/
 global class ContactMedicalDataWrappers {
     
     global class ResponseWrapper {
@@ -318,16 +314,17 @@ global class ContactMedicalDataWrappers {
     }  
     public class DocumentData {
         public String Id;
+        public String recordId;
         public String ContentDocumentId;
         public String LinkedEntityId;
         public String Title;
         public String FileType;
         public String FileExtension;
-        public Integer ContentSize;
-        public Date CreatedDate;
-        public String CreatedById;
-        public Datetime LastModifiedDate;
-        public String LastModifiedById;
+       public String ContentSize;
+        public String CreatedDate;
+        public String category;
+        public String accountId;
+        public String relatedFile;
         public String OwnerId;
         public String LatestPublishedVersionId;
         public String VersionNumber;
@@ -337,5 +334,7 @@ global class ContactMedicalDataWrappers {
         public String PublicUrl;
         public String Description;
         public String Organization_Name;
+        public String document_type;
+        public String source_type;
     }
 }

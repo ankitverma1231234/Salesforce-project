@@ -1,0 +1,141 @@
+<template>
+    <div class="custom-card-wrapper">
+        <lightning-card icon-name="standard:file" title="File">
+
+            <!-- Actions -->
+            <div slot="actions">
+                <c-account-file-uploader
+                    record-id={recordId}
+                    button-label="Upload File"
+                    icon-name="utility:upload"
+                    variant="brand"
+                    allow-multiple
+                    class="slds-m-right_x-small"
+                    onuploadsuccess={handleUploadSuccess}>
+                </c-account-file-uploader>
+
+                <lightning-button
+                    label="Delete Selected"
+                    variant="destructive"
+                    icon-name="utility:delete"
+                    onclick={handleDeleteSelected}
+                    disabled={isDeleteDisabled}
+                    class="slds-m-right_x-small">
+                </lightning-button>
+
+                <lightning-button
+                    label="Refresh"
+                    variant="neutral"
+                    icon-name="utility:refresh"
+                    onclick={handleRefresh}>
+                </lightning-button>
+            </div>
+
+            <!-- Delete Modal -->
+            <template if:true={showDeleteModal}>
+                <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                    <div class="slds-modal__container">
+
+                        <header class="slds-modal__header">
+                            <button
+                                class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                                title="Close"
+                                onclick={handleCloseDeleteModal}>
+                                <lightning-icon icon-name="utility:close" alternative-text="Close" size="small"></lightning-icon>
+                            </button>
+                            <h2 class="slds-modal__title slds-hyphenate">Confirm Deletion</h2>
+                        </header>
+
+                        <div class="slds-modal__content slds-p-around_medium">
+                            <p>
+                                Are you sure you want to delete {selectedCount} selected record(s)?
+                                This action cannot be undone.
+                            </p>
+                        </div>
+
+                        <footer class="slds-modal__footer">
+                            <lightning-button
+                                label="Cancel"
+                                onclick={handleCloseDeleteModal}
+                                class="slds-m-right_x-small">
+                            </lightning-button>
+
+                            <lightning-button
+                                label="Delete"
+                                variant="destructive"
+                                onclick={confirmDelete}>
+                            </lightning-button>
+                        </footer>
+
+                    </div>
+                </section>
+                <div class="slds-backdrop slds-backdrop_open"></div>
+            </template>
+
+            <!-- Main Content -->
+            <div class="slds-p-around_medium">
+
+                <template if:true={isLoading}>
+                    <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+                </template>
+
+                <template if:false={isLoading}>
+
+                    <!-- Records Table -->
+                    <template if:true={hasRecords}>
+                        <div class="table-container">
+
+                            <lightning-datatable
+                                key-field="id"
+                                data={previewRecords}
+                                columns={columns}
+                                selected-rows={selectedRowIds}
+                                onrowselection={handleRowSelection}
+                                onrowaction={handleRowAction}>
+                            </lightning-datatable>
+
+                            <!-- Footer -->
+                            <div class="table-footer">
+                                <span class="footer-count">
+                                    Showing {previewCount} of {recordCount} record(s)
+                                </span>
+
+                                <div class="viewAllbuttonDiv">
+                                    <lightning-button
+                                        label="View All"
+                                        variant="base"
+                                        onclick={handleViewAllDriveFiles}>
+                                    </lightning-button>
+                                </div>
+                            </div>
+
+                        </div>
+                    </template>
+
+                    <!-- No Records -->
+                    <template if:false={hasRecords}>
+                        <div class="slds-align_absolute-center slds-p-around_large">
+                            <div class="slds-text-align_center">
+                                <lightning-icon
+                                    icon-name="standard:file"
+                                    size="large"
+                                    class="slds-m-bottom_small">
+                                </lightning-icon>
+
+                                <p class="slds-text-heading_small slds-m-top_small">
+                                    No File Found
+                                </p>
+
+                                <p class="slds-text-body_regular slds-text-color_weak slds-m-top_xx-small">
+                                    There are no File linked to this Account.
+                                </p>
+                            </div>
+                        </div>
+                    </template>
+
+                </template>
+            </div>
+
+        </lightning-card>
+    </div>
+</template>

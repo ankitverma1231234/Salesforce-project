@@ -1,4 +1,4 @@
-public class FileUpsertHelper {
+public Without Sharing class FileUpsertHelper {
 
     public static List<Map<String, Object>> processFiles(List<Map<String, Object>> records) {
 
@@ -50,6 +50,10 @@ public class FileUpsertHelper {
             String accountId   = (String)recData.get('Accountid');
             String description = (String)recData.get('description');
             String createdDateStr = (String)recData.get('created_date');
+            String documentType   = (String)recData.get('document_type');
+            String sourceType     = (String)recData.get('source_type');
+            String category      = (String)recData.get('category');
+            
             Datetime date_time;
             
             if(!String.isBlank(createdDateStr)){
@@ -88,6 +92,9 @@ public class FileUpsertHelper {
             cv.FirstPublishLocationId = accountId;
             cv.Send_File_to_Portal__c = !isDelete;
             cv.Service_Date_Time__c = date_time;
+            cv.Document_Type__c        = documentType;
+            cv.Source_Type__c          = sourceType;
+            cv.Category__c             = category;
 
             toInsert.add(cv);
 
@@ -128,11 +135,6 @@ public class FileUpsertHelper {
 
         return resultData;
     }
-
-
-    /* =========================
-       DOWNLOAD FILE
-    ========================== */
 
     private static Blob downloadFile(String url){
 

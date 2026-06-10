@@ -1,6 +1,5 @@
 trigger ContentVersionGeminiTrigger on ContentVersion (after insert) {
-    // Only process the first record to avoid queueable limits in bulk operations.
-    // Each file gets its own async job for Gemini summarization.
+   /*
     Set<Id> processedIds = new Set<Id>();
 
     for (ContentVersion cv : Trigger.new) {
@@ -28,4 +27,6 @@ trigger ContentVersionGeminiTrigger on ContentVersion (after insert) {
             jobCount++;
         }
     }
+        */
+        
 }

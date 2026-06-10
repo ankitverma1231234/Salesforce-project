@@ -1,118 +1,336 @@
-@isTest(SeeAllData=true)
+@IsTest(SeeAllData=true)
 private class GeminiAnalysisNoteServiceTest {
-
-    static ContentVersion createTestCv(Account acc, String title, String path, Blob data) {
-        ContentVersion cv = new ContentVersion(
-            Title = title,
-            PathOnClient = path,
-            VersionData = data,
-            IsMajorVersion = true
+    private static ContentVersion createTestFile(
+        Account testAccount,
+        String title,
+        String path,
+        String content
+    ) {
+        return FileStorageApexTestFactory.createFile(
+            testAccount,
+            title,
+            path,
+            content
         );
-        insert cv;
-        Id cdId = [SELECT ContentDocumentId FROM ContentVersion WHERE Id = :cv.Id].ContentDocumentId;
-        insert new ContentDocumentLink(
-            ContentDocumentId = cdId,
-            LinkedEntityId = acc.Id,
-            ShareType = 'V',
-            Visibility = 'AllUsers'
+    }
+
+    @IsTest
+    static void upsertAndRetrieveAnalysis() {
+        Account testAccount = getExistingAccount();
+        ContentVersion version = createTestFile(
+            testAccount,
+            'Test Note Document',
+            'TestNoteDocument.pdf',
+            'source'
         );
-        return [SELECT Id, ContentDocumentId FROM ContentVersion WHERE Id = :cv.Id];
-    }
+        FileStorageApexTestFactory.createProcessingLog(version.Id, false);
+        GeminiFileInsightsController.AnalysisBundleWrapper bundle =
+            createBundle(version, 'Stored Analysis');
 
-    @isTest
-    static void testInsertAndRetrieveAnalysis() {
-        Account acc = [SELECT Id FROM Account LIMIT 1];
-        ContentVersion cv = createTestCv(acc, 'Test Note Doc', 'Note_Doc.csv', Blob.valueOf('test'));
-        Id cdId = cv.ContentDocumentId;
-
-        GeminiFileInsightsController.AnalysisBundleWrapper bundle = new GeminiFileInsightsController.AnalysisBundleWrapper();
-        bundle.sourceDocumentId = cdId;
-        bundle.analysisTitle = 'Test Document - AI Summary';
-        bundle.plainTextContext = 'Test Context';
-
-        Test.startTest();
-        GeminiAnalysisNoteService.upsertAnalysisNote(cdId, acc.Id, bundle);
-        
-        GeminiFileInsightsController.AnalysisBundleWrapper retrievedBundle = 
-            GeminiAnalysisNoteService.getStoredAnalysis(cdId);
-        Test.stopTest();
-
-        System.assertNotEquals(null, retrievedBundle, 'Stored analysis should be retrieved');
-        System.assertEquals(bundle.analysisTitle, retrievedBundle.analysisTitle, 'Stored title should match');
-    }
-
-    @isTest
-    static void testStalenessCheck() {
-        Account acc = [SELECT Id FROM Account LIMIT 1];
-        ContentVersion cv = createTestCv(acc, 'Stale Check Doc', 'Stale_Doc.csv', Blob.valueOf('test 1'));
-        Id cdId = cv.ContentDocumentId;
-
-        GeminiFileInsightsController.AnalysisBundleWrapper bundle = new GeminiFileInsightsController.AnalysisBundleWrapper();
-        bundle.sourceDocumentId = cdId;
-        bundle.sourceLatestVersionId = cv.Id;
-        GeminiAnalysisNoteService.upsertAnalysisNote(cdId, acc.Id, bundle);
-
-        System.assertEquals(true, GeminiAnalysisNoteService.hasFreshAnalysis(cdId), 'Should be fresh initially');
-
-        Test.startTest();
-        ContentVersion newVersion = new ContentVersion(
-            ContentDocumentId = cdId,
-            Title = 'Stale Check Doc',
-            PathOnClient = 'Stale_Doc.csv',
-            VersionData = Blob.valueOf('test 2'),
-            IsMajorVersion = true
+        Id attachmentId = GeminiAnalysisNoteService.upsertAnalysisNote(
+            version.ContentDocumentId,
+            testAccount.Id,
+            bundle
         );
-        insert newVersion;
-        Test.stopTest();
+        GeminiFileInsightsController.AnalysisBundleWrapper retrieved =
+            GeminiAnalysisNoteService.getStoredAnalysis(version.ContentDocumentId);
+        Attachment withBody =
+            GeminiAnalysisNoteService.getStoredAnalysisAttachment(
+                version.ContentDocumentId,
+                true
+            );
+        Attachment withoutBody =
+            GeminiAnalysisNoteService.getStoredAnalysisAttachment(
+                version.ContentDocumentId,
+                false
+            );
 
-        System.assertEquals(true, GeminiAnalysisNoteService.isAnalysisStale(cdId), 'Should be stale after new version');
+        System.assertNotEquals(null, attachmentId);
+        System.assertEquals('Stored Analysis', retrieved.analysisTitle);
+        System.assertEquals(attachmentId, withBody.Id);
+        System.assertNotEquals(null, withBody.Body);
+        System.assertEquals(attachmentId, withoutBody.Id);
     }
 
-    @isTest
-    static void testMissingData() {
-        Id dummyId = '069000000000000AAA';
-        
-        Test.startTest();
-        GeminiFileInsightsController.AnalysisBundleWrapper retrieved = GeminiAnalysisNoteService.getStoredAnalysis(dummyId);
-        Boolean isStale = GeminiAnalysisNoteService.isAnalysisStale(dummyId);
-        Test.stopTest();
-        
-        System.assertEquals(null, retrieved, 'Should return null for missing document');
-        System.assertEquals(true, isStale, 'Missing analysis should be considered stale');
+    @IsTest
+    static void stalenessTracksLatestContentVersion() {
+        Account testAccount = getExistingAccount();
+        ContentVersion firstVersion = createTestFile(
+            testAccount,
+            'Stale Check',
+            'StaleCheck.pdf',
+            'first'
+        );
+        GeminiAnalysisNoteService.upsertAnalysisNote(
+            firstVersion.ContentDocumentId,
+            testAccount.Id,
+            createBundle(firstVersion, 'Fresh Analysis')
+        );
+
+        System.assertEquals(
+            true,
+            GeminiAnalysisNoteService.hasFreshAnalysis(
+                firstVersion.ContentDocumentId
+            )
+        );
+
+        ContentVersion secondVersion = new ContentVersion(
+            ContentDocumentId = firstVersion.ContentDocumentId,
+            Title = 'Stale Check',
+            PathOnClient = 'StaleCheck.pdf',
+            VersionData = Blob.valueOf('second')
+        );
+        insert secondVersion;
+
+        System.assertEquals(
+            true,
+            GeminiAnalysisNoteService.isAnalysisStale(
+                firstVersion.ContentDocumentId
+            )
+        );
+        System.assertEquals(
+            false,
+            GeminiAnalysisNoteService.hasFreshAnalysis(
+                firstVersion.ContentDocumentId
+            )
+        );
     }
 
-    @isTest
-    static void testSameTitleFilesDoNotOverwriteEachOther() {
-        Account acc = [SELECT Id FROM Account LIMIT 1];
-        ContentVersion firstCv = createTestCv(acc, 'Duplicate Title Doc', 'Duplicate_Title_1.csv', Blob.valueOf('first'));
-        ContentVersion secondCv = createTestCv(acc, 'Duplicate Title Doc', 'Duplicate_Title_2.csv', Blob.valueOf('second'));
+    @IsTest
+    static void missingAndIncompleteAnalysesAreStale() {
+        Id missingDocumentId = Id.valueOf('069000000000001AAA');
+        System.assertEquals(
+            null,
+            GeminiAnalysisNoteService.getStoredAnalysis(missingDocumentId)
+        );
+        System.assertEquals(
+            null,
+            GeminiAnalysisNoteService.getStoredAnalysisAttachment(
+                missingDocumentId,
+                true
+            )
+        );
+        System.assertEquals(
+            true,
+            GeminiAnalysisNoteService.isAnalysisStale(missingDocumentId)
+        );
 
-        GeminiFileInsightsController.AnalysisBundleWrapper firstBundle = new GeminiFileInsightsController.AnalysisBundleWrapper();
-        firstBundle.sourceDocumentId = firstCv.ContentDocumentId;
-        firstBundle.sourceLatestVersionId = firstCv.Id;
-        firstBundle.analysisTitle = 'First Analysis';
+        Account testAccount = getExistingAccount();
+        ContentVersion version = createTestFile(
+            testAccount,
+            'Incomplete Analysis',
+            'IncompleteAnalysis.pdf',
+            'source'
+        );
+        GeminiFileInsightsController.AnalysisBundleWrapper incomplete =
+            new GeminiFileInsightsController.AnalysisBundleWrapper();
+        incomplete.sourceDocumentId = String.valueOf(version.ContentDocumentId);
+        GeminiAnalysisNoteService.upsertAnalysisNote(
+            version.ContentDocumentId,
+            testAccount.Id,
+            incomplete
+        );
+        System.assertEquals(
+            true,
+            GeminiAnalysisNoteService.isAnalysisStale(
+                version.ContentDocumentId
+            )
+        );
+    }
 
-        GeminiFileInsightsController.AnalysisBundleWrapper secondBundle = new GeminiFileInsightsController.AnalysisBundleWrapper();
-        secondBundle.sourceDocumentId = secondCv.ContentDocumentId;
-        secondBundle.sourceLatestVersionId = secondCv.Id;
-        secondBundle.analysisTitle = 'Second Analysis';
+    @IsTest
+    static void sameTitlesRemainIsolatedByDocumentId() {
+        Account testAccount = getExistingAccount();
+        ContentVersion first = createTestFile(
+            testAccount,
+            'Duplicate Title',
+            'DuplicateOne.pdf',
+            'first'
+        );
+        ContentVersion second = createTestFile(
+            testAccount,
+            'Duplicate Title',
+            'DuplicateTwo.pdf',
+            'second'
+        );
 
-        Test.startTest();
-        GeminiAnalysisNoteService.upsertAnalysisNote(firstCv.ContentDocumentId, acc.Id, firstBundle);
-        GeminiAnalysisNoteService.upsertAnalysisNote(secondCv.ContentDocumentId, acc.Id, secondBundle);
-        Test.stopTest();
+        GeminiAnalysisNoteService.upsertAnalysisNote(
+            first.ContentDocumentId,
+            testAccount.Id,
+            createBundle(first, 'First Analysis')
+        );
+        GeminiAnalysisNoteService.upsertAnalysisNote(
+            second.ContentDocumentId,
+            testAccount.Id,
+            createBundle(second, 'Second Analysis')
+        );
 
-        String firstName = GeminiAnalysisNoteService.buildNoteTitle('Duplicate Title Doc', firstCv.ContentDocumentId);
-        String secondName = GeminiAnalysisNoteService.buildNoteTitle('Duplicate Title Doc', secondCv.ContentDocumentId);
+        String firstName = GeminiAnalysisNoteService.buildNoteTitle(
+            first.Title,
+            first.ContentDocumentId
+        );
+        String secondName = GeminiAnalysisNoteService.buildNoteTitle(
+            second.Title,
+            second.ContentDocumentId
+        );
+        System.assertNotEquals(firstName, secondName);
+        System.assertEquals(
+            2,
+            [
+                SELECT COUNT()
+                FROM Attachment
+                WHERE Name IN :new Set<String>{ firstName, secondName }
+            ]
+        );
+    }
 
-        System.assertNotEquals(firstName, secondName, 'Same-title source files should produce unique attachment names');
+    @IsTest
+    static void upsertReplacesExistingAttachmentAndBodyCanRefreshInPlace() {
+        Account testAccount = getExistingAccount();
+        ContentVersion version = createTestFile(
+            testAccount,
+            'Lifecycle Document',
+            'LifecycleDocument.pdf',
+            'source'
+        );
+        FileStorageApexTestFactory.createProcessingLog(version.Id, false);
 
-        List<Attachment> storedAttachments = [
-            SELECT Id, Name
-            FROM Attachment
-            WHERE ParentId = :acc.Id
-              AND Name IN :new Set<String>{ firstName, secondName }
+        Id firstId = GeminiAnalysisNoteService.upsertAnalysisNote(
+            version.ContentDocumentId,
+            testAccount.Id,
+            createBundle(version, 'First Title')
+        );
+        GeminiFileInsightsController.AnalysisBundleWrapper replacement =
+            createBundle(version, 'Replacement Title');
+        Id replacementId = GeminiAnalysisNoteService.upsertAnalysisNote(
+            version.ContentDocumentId,
+            testAccount.Id,
+            replacement
+        );
+
+        System.assertNotEquals(firstId, replacementId);
+        String noteName = GeminiAnalysisNoteService.buildNoteTitle(
+            version.Title,
+            version.ContentDocumentId
+        );
+        System.assertEquals(
+            1,
+            [SELECT COUNT() FROM Attachment WHERE Name = :noteName]
+        );
+
+        replacement.analysisTitle = 'Refreshed Title';
+        GeminiAnalysisNoteService.updateAnalysisNoteBody(
+            replacementId,
+            replacement
+        );
+        System.assertEquals(
+            'Refreshed Title',
+            GeminiAnalysisNoteService.getStoredAnalysis(
+                version.ContentDocumentId
+            ).analysisTitle
+        );
+
+        GeminiAnalysisNoteService.updateAnalysisNoteBody(null, replacement);
+        GeminiAnalysisNoteService.updateAnalysisNoteBody(replacementId, null);
+    }
+
+    @IsTest
+    static void retrievalSkipsMalformedAndMismatchedAttachments() {
+        Account testAccount = getExistingAccount();
+        ContentVersion version = createTestFile(
+            testAccount,
+            'Legacy Document',
+            'LegacyDocument.pdf',
+            'source'
+        );
+        String currentName = GeminiAnalysisNoteService.buildNoteTitle(
+            version.Title,
+            version.ContentDocumentId
+        );
+        insert new Attachment(
+            ParentId = testAccount.Id,
+            Name = currentName,
+            Body = Blob.valueOf('{bad-json')
+        );
+
+        GeminiFileInsightsController.AnalysisBundleWrapper wrongBundle =
+            createBundle(version, 'Wrong Document');
+        wrongBundle.sourceDocumentId = '069000000000002AAA';
+        insert new Attachment(
+            ParentId = testAccount.Id,
+            Name = currentName,
+            Body = Blob.valueOf(JSON.serialize(wrongBundle))
+        );
+
+        GeminiFileInsightsController.AnalysisBundleWrapper legacyBundle =
+            createBundle(version, 'Legacy Match');
+        insert new Attachment(
+            ParentId = testAccount.Id,
+            Name = GeminiAnalysisNoteService.buildLegacyNoteTitle(
+                version.Title,
+                version.ContentDocumentId
+            ),
+            Body = Blob.valueOf(JSON.serialize(legacyBundle))
+        );
+
+        System.assertEquals(
+            'Legacy Match',
+            GeminiAnalysisNoteService.getStoredAnalysis(
+                version.ContentDocumentId
+            ).analysisTitle
+        );
+    }
+
+    @IsTest
+    static void titleAndParentHelpersCoverBoundaries() {
+        Account testAccount = getExistingAccount();
+        ContentVersion version = createTestFile(
+            testAccount,
+            'Parent Resolution',
+            'ParentResolution.pdf',
+            'source'
+        );
+        String longTitle = ''.leftPad(300, 'X');
+        String noteTitle = GeminiAnalysisNoteService.buildNoteTitle(
+            longTitle,
+            version.ContentDocumentId
+        );
+        String legacyTitle = GeminiAnalysisNoteService.buildLegacyNoteTitle(
+            longTitle,
+            version.ContentDocumentId
+        );
+
+        System.assertEquals(255, noteTitle.length());
+        System.assertEquals(255, legacyTitle.length());
+        System.assert(noteTitle.endsWith('[' + version.ContentDocumentId + ']'));
+        System.assertEquals(
+            testAccount.Id,
+            GeminiAnalysisNoteService.getParentRecordId(
+                version.ContentDocumentId
+            )
+        );
+    }
+
+    private static GeminiFileInsightsController.AnalysisBundleWrapper createBundle(
+        ContentVersion version,
+        String title
+    ) {
+        GeminiFileInsightsController.AnalysisBundleWrapper bundle =
+            new GeminiFileInsightsController.AnalysisBundleWrapper();
+        bundle.sourceDocumentId = String.valueOf(version.ContentDocumentId);
+        bundle.sourceLatestVersionId = String.valueOf(version.Id);
+        bundle.analysisTitle = title;
+        bundle.plainTextContext = 'Stored context';
+        bundle.sections = new Map<String, String>{ 'summary' => 'Stored summary' };
+        return bundle;
+    }
+
+    private static Account getExistingAccount() {
+        return [
+            SELECT Id
+            FROM Account
+            WHERE Metriport_Patient_Id__c = 'patient-123'
+            LIMIT 1
         ];
-        System.assertEquals(2, storedAttachments.size(), 'Both same-title analysis attachments should survive');
     }
 }

@@ -82,28 +82,38 @@ public without sharing class DocFlowAnalyticsProcessor {
         ctx.analyticsId = rec.Id;
         ctx.rawPayload = payload;
         ctx.eventType = normalizeText(firstString(payload, new List<String>{
-            'event',
-            'event_type',
-            'type'
-        }));
+    'event',
+    'event_type',
+    'type',
+    'data.event',
+    'data.event_type'
+}));
         ctx.action = normalizeText(firstString(payload, new List<String>{
-            'action'
-        }));
-        ctx.packageId = normalizeText(firstString(payload, new List<String>{
-            'package_id'
-        }));
-        ctx.documentId = normalizeText(firstString(payload, new List<String>{
-            'document_id',
-            'signed_documents.0.document_id'
-        }));
+    'action',
+    'data.action'
+}));
+ctx.packageId = normalizeText(firstString(payload, new List<String>{
+    'package_id',
+    'data.package_id'
+}));
+ctx.documentId = normalizeText(firstString(payload, new List<String>{
+    'document_id',
+    'data.document_id',
+    'signed_documents.0.document_id',
+    'data.signed_documents.0.document_id'
+}));
         ctx.actorEmail = normalizeText(firstNonBlank(
-            safeString(rec.get('Actor_Email__c')),
-            firstString(payload, new List<String>{
-                'recipient_email',
-                'recipient_details.email',
-                'metadata.performed_by_email'
-            })
-        ));
+    safeString(rec.get('Actor_Email__c')),
+    firstString(payload, new List<String>{
+        'recipient_email',
+        'data.recipient_email',
+        'recipient_details.email',
+        'data.recipient_details.email',
+        'metadata.performed_by_email',
+        'actor.email',
+        'data.actor.email'
+    })
+));
         ctx.actorName = normalizeText(firstNonBlank(
             safeString(rec.get('Actor_Name__c')),
             firstString(payload, new List<String>{
@@ -119,9 +129,15 @@ public without sharing class DocFlowAnalyticsProcessor {
         ctx.personAccountId = (Id) rec.get('Person_Account__c');
         ctx.sourceRecordId = safeString(rec.get('Source_Record_Id__c'));
         ctx.downloadUrl = normalizeText(firstString(payload, new List<String>{
-            'signed_documents.0.signed_document_url',
-            'download_url'
-        }));
+    'signed_documents.0.signed_document_url',
+    'data.signed_documents.0.signed_document_url',
+    'download_url',
+    'data.download_url',
+    'final_document_url',
+    'data.final_document_url',
+    'combined_signed_document_url',
+    'data.combined_signed_document_url'
+}));
         ctx.docFlowDocumentId = (Id) rec.get('Doc_Flow_Document__c');
     
         return ctx;
@@ -146,20 +162,21 @@ public without sharing class DocFlowAnalyticsProcessor {
     
         Map<Id, Doc_Flow_Document__c> docMap = new Map<Id, Doc_Flow_Document__c>();
         if (!docIds.isEmpty()) {
-            docMap = new Map<Id, Doc_Flow_Document__c>([
-                SELECT Id,
-                       Account__c,
-                       Template_Id__c,
-                       Source_Record_Id__c,
-                       Recipient_Config_Json__c,
-                       Response_Json__c,
-                       Status__c,
-                       Primary_Access_Link__c,
-                       Error_Message__c,
-                       DocFlow_Source_Type__c
-                FROM Doc_Flow_Document__c
-                WHERE Id IN :docIds
-            ]);
+                docMap = new Map<Id, Doc_Flow_Document__c>([
+    SELECT Id,
+           Account__c,
+           Template_Id__c,
+           Source_Record_Id__c,
+           Recipient_Config_Json__c,
+           Response_Json__c,
+           Status__c,
+           Primary_Access_Link__c,
+           Recipient_Email_Value__c,
+           Error_Message__c,
+           DocFlow_Source_Type__c
+    FROM Doc_Flow_Document__c
+    WHERE Id IN :docIds
+]);
         }
     
         for (AnalyticsEventContext ctx : contexts) {
@@ -241,32 +258,7 @@ public without sharing class DocFlowAnalyticsProcessor {
 }
 
     
-            if (isSignedCopyEvent(ctx)) {
-                for (RecipientInfo r : recipients) {
-                    if (String.isBlank(r.email)) {
-                        continue;
-                    }
-    
-                    String key = doc.Id + '::completed::' + r.email.toLowerCase();
-                    if (pendingEmailByKey.containsKey(key)) {
-                        continue;
-                    }
-    
-                    PendingEmailWork work = new PendingEmailWork();
-                    work.syntheticKey = key;
-                    work.docId = doc.Id;
-                    work.accountId = doc.Account__c;
-                    work.toEmail = r.email;
-                    work.templateDeveloperName = TEMPLATE_COMPLETED_DEV_NAME;
-                    work.fromAddressValue = extractFromAddressValue(config);
-                    work.recipientName = r.name;
-                    work.accessLink = null;
-                    pendingEmailByKey.put(key, work);
-                }
-    
-                docIdsToCancelReminders.add(doc.Id);
-                continue;
-            }
+            
     
             if (isRejectedEvent(ctx)) {
                 addDocError(docUpdatesById, doc.Id, 'Cadence stopped: approval/reject event was rejected.');
@@ -304,15 +296,6 @@ if (currentIndex < 0) {
 }
 
 if (!shouldAdvanceCadence(ctx, currentRecipient, sourceType)) {
-    addDocError(
-        docUpdatesById,
-        doc.Id,
-        'Cadence skipped: event does not advance matched recipient. Event=' +
-        blankToEmpty(ctx.eventType) +
-        ', ActorEmail=' + blankToEmpty(ctx.actorEmail) +
-        ', ActorRole=' + blankToEmpty(ctx.actorRole) +
-        ', MatchedRole=' + blankToEmpty(currentRecipient.role)
-    );
     continue;
 }
 
@@ -520,8 +503,8 @@ RecipientInfo nextRecipient = findNextActionableRecipient(recipients, currentInd
     }
 
     private static Boolean isSignedCopyEvent(AnalyticsEventContext ctx) {
-        return ctx != null && blankToEmpty(ctx.eventType).toLowerCase() == 'signed_copy';
-    }
+    return ctx != null && blankToEmpty(ctx.eventType).toLowerCase() == 'signed_copy';
+}
 
     private static Boolean isRejectedEvent(AnalyticsEventContext ctx) {
         if (ctx == null) {
@@ -531,7 +514,8 @@ RecipientInfo nextRecipient = findNextActionableRecipient(recipients, currentInd
         String evt = blankToEmpty(ctx.eventType).toLowerCase();
         String action = blankToEmpty(ctx.action).toLowerCase();
     
-        return evt == 'reject'
+        return evt == 'rejected'
+            || evt == 'reject'
             || (evt == 'approve_reject' && action == 'rejected')
             || action == 'rejected';
     }
@@ -548,29 +532,22 @@ RecipientInfo nextRecipient = findNextActionableRecipient(recipients, currentInd
     String evt = blankToEmpty(ctx.eventType).toLowerCase();
     String action = blankToEmpty(ctx.action).toLowerCase();
     String role = blankToEmpty(currentRecipient.role).toLowerCase();
-    String src = blankToEmpty(sourceType).toLowerCase();
 
-    if (role == 'signer' && evt == 'signed') {
-        return true;
+    if (role == 'signer') {
+        return evt == 'signed';
     }
 
     if (role == 'approver') {
-        if (evt == 'approve') {
-            return true;
-        }
-        if (evt == 'approve_reject' && action == 'approved') {
-            return true;
-        }
-        if (action == 'approved') {
-            return true;
-        }
+        return evt == 'approved'
+            || evt == 'approve'
+            || (evt == 'approve_reject' && action == 'approved')
+            || action == 'approved';
     }
 
     if (role == 'reviewer') {
-        if (src == 'template') {
-            return evt == 'review' || action == 'reviewed';
-        }
-        return evt == 'opened' || evt == 'review' || action == 'reviewed';
+        return evt == 'reviewed'
+            || evt == 'review'
+            || action == 'reviewed';
     }
 
     return false;
@@ -690,6 +667,14 @@ private static RecipientInfo findNextActionableRecipient(List<RecipientInfo> rec
         }
 
         if (String.isBlank(next.email)) {
+            continue;
+        }
+
+        String role = blankToEmpty(next.role).toLowerCase();
+
+        // receive_copy should not be treated as the next actionable step
+        // it should only receive the final completed email on the completed event
+        if (role == 'receive_copy') {
             continue;
         }
 
@@ -1071,21 +1056,32 @@ private static RecipientInfo findNextActionableRecipient(List<RecipientInfo> rec
         return String.isBlank(value) ? null : value.trim().toLowerCase();
     }
 
-    private static String inferRoleFromPayload(String eventType, String action) {
-        String evt = blankToEmpty(eventType).toLowerCase();
-        String act = blankToEmpty(action).toLowerCase();
-    
-        if (evt == 'approve' || evt == 'reject' || evt == 'approve_reject' || act == 'approved' || act == 'rejected') {
-            return 'approver';
-        }
-        if (evt == 'review' || evt == 'opened' || act == 'reviewed') {
-            return 'reviewer';
-        }
-        if (evt == 'signed') {
-            return 'signer';
-        }
-        return null;
+   private static String inferRoleFromPayload(String eventType, String action) {
+    String evt = blankToEmpty(eventType).toLowerCase();
+    String act = blankToEmpty(action).toLowerCase();
+
+    if (
+        evt == 'approved' ||
+        evt == 'approve' ||
+        evt == 'rejected' ||
+        evt == 'reject' ||
+        evt == 'approve_reject' ||
+        act == 'approved' ||
+        act == 'rejected'
+    ) {
+        return 'approver';
     }
+
+    if (evt == 'reviewed' || evt == 'review' || evt == 'opened' || act == 'reviewed') {
+        return 'reviewer';
+    }
+
+    if (evt == 'signed') {
+        return 'signer';
+    }
+
+    return null;
+}
 
     private static String firstNonBlank(String value1, String value2) {
         return !String.isBlank(value1) ? value1 : value2;

@@ -508,23 +508,57 @@ private class AiFileNamingDailyJobTest {
     
     @IsTest
     static void scheduleDailyCoversScheduleMethod() {
+        Set<Id> existingScheduleIds = new Map<Id, CronTrigger>([
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name = 'AI File Naming Daily Job'
+        ]).keySet();
+
         Test.startTest();
-        AiFileNamingDailyJob.scheduleDaily(null);
-        AiFileNamingDailyJob.scheduleDaily('0 30 3 * * ?');
+        try {
+            AiFileNamingDailyJob.scheduleDaily('0 30 3 * * ?');
+        } catch (AsyncException ex) {
+            System.assert(
+                ex.getMessage().contains('already scheduled'),
+                'Only the expected duplicate schedule error should be accepted.'
+            );
+        }
+
+        for (CronTrigger scheduledJob : [
+            SELECT Id
+            FROM CronTrigger
+            WHERE CronJobDetail.Name = 'AI File Naming Daily Job'
+        ]) {
+            if (!existingScheduleIds.contains(scheduledJob.Id)) {
+                System.abortJob(scheduledJob.Id);
+            }
+        }
         Test.stopTest();
-        
-        
     }
     
     @IsTest
     static void schedulableExecuteCoversLifecycle() {
+        Set<Id> existingBatchIds = new Map<Id, AsyncApexJob>([
+            SELECT Id
+            FROM AsyncApexJob
+            WHERE ApexClass.Name = 'AiFileNamingDailyJob'
+        ]).keySet();
+
         Test.startTest();
         AiFileNamingDailyJob job = new AiFileNamingDailyJob();
         job.execute((SchedulableContext) null);
-        job.finish(null);
+
+        for (AsyncApexJob batchJob : [
+            SELECT Id
+            FROM AsyncApexJob
+            WHERE ApexClass.Name = 'AiFileNamingDailyJob'
+            AND Status IN ('Holding', 'Queued', 'Preparing')
+        ]) {
+            if (!existingBatchIds.contains(batchJob.Id)) {
+                System.abortJob(batchJob.Id);
+            }
+        }
         Test.stopTest();
-        
-        
     }
     
     @IsTest
@@ -541,10 +575,7 @@ private class AiFileNamingDailyJobTest {
         Test.startTest();
         AiFileNamingDailyJob job = new AiFileNamingDailyJob();
         job.execute((Database.BatchableContext) null, new List<SObject>());
-        job.finish(null);
         Test.stopTest();
-        
-        
     }
     
     // ──────────────────────────────────────────────

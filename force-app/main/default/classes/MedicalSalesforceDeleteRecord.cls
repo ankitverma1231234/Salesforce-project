@@ -74,7 +74,8 @@ public class MedicalSalesforceDeleteRecord {
             'HealthcareFacility' => 'healthcare_facilities',
             'HealthcarePractitionerFacility' => 'healthcare_professionals',
             'Case' => 'case_messages',
-            'ContentVersion' => 'documents'
+            'PatientImmunization' => 'immunization',
+            'fra__File_Storage__c' => 'documents'
         };        
         return objectToKeyMap.containsKey(recordType) ? objectToKeyMap.get(recordType) : recordType.toLowerCase();
     }

@@ -21,16 +21,15 @@ public with sharing class GeminiAnalysisNoteService {
             return null;
         }
 
-        Id parentRecordId = getParentRecordId(sourceContentDocumentId);
-        String noteTitle = buildNoteTitle(sourceVersion.Title, sourceContentDocumentId);
-        String legacyNoteTitle = buildLegacyNoteTitle(sourceVersion.Title, sourceContentDocumentId);
-        Set<String> candidateNames = new Set<String>{ noteTitle, legacyNoteTitle };
+        Set<Id> parentIds = getAnalysisParentIds(sourceContentDocumentId);
+        String notePattern = buildNoteTitlePattern(sourceContentDocumentId);
+        String legacyNotePattern = buildLegacyNoteTitlePattern(sourceContentDocumentId);
 
         List<Attachment> attachments = [
             SELECT Id, Body, Name
             FROM Attachment
-            WHERE ParentId = :parentRecordId
-              AND Name IN :candidateNames
+            WHERE ParentId IN :parentIds
+              AND (Name LIKE :notePattern OR Name LIKE :legacyNotePattern)
             ORDER BY LastModifiedDate DESC
         ];
 
@@ -55,6 +54,39 @@ public with sharing class GeminiAnalysisNoteService {
         }
 
         return null;
+    }
+
+    public static Attachment getStoredAnalysisAttachment(Id sourceContentDocumentId, Boolean includeBody) {
+        ContentVersion sourceVersion = getLatestSourceVersion(sourceContentDocumentId);
+        if (sourceVersion == null) {
+            return null;
+        }
+
+        Set<Id> parentIds = getAnalysisParentIds(sourceContentDocumentId);
+        String notePattern = buildNoteTitlePattern(sourceContentDocumentId);
+        String legacyNotePattern = buildLegacyNoteTitlePattern(sourceContentDocumentId);
+
+        if (includeBody == true) {
+            List<Attachment> attachments = [
+                SELECT Id, Body, Name, ParentId, CreatedDate, LastModifiedDate
+                FROM Attachment
+                WHERE ParentId IN :parentIds
+                  AND (Name LIKE :notePattern OR Name LIKE :legacyNotePattern)
+                ORDER BY LastModifiedDate DESC, CreatedDate DESC, Id DESC
+                LIMIT 1
+            ];
+            return attachments.isEmpty() ? null : attachments[0];
+        }
+
+        List<Attachment> attachments = [
+            SELECT Id, Name, ParentId, CreatedDate, LastModifiedDate
+            FROM Attachment
+            WHERE ParentId IN :parentIds
+              AND (Name LIKE :notePattern OR Name LIKE :legacyNotePattern)
+            ORDER BY LastModifiedDate DESC, CreatedDate DESC, Id DESC
+            LIMIT 1
+        ];
+        return attachments.isEmpty() ? null : attachments[0];
     }
 
     public static Boolean isAnalysisStale(Id sourceContentDocumentId) {
@@ -91,13 +123,18 @@ public with sharing class GeminiAnalysisNoteService {
 
         String noteTitle = buildNoteTitle(sourceVersion.Title, sourceContentDocumentId);
         Blob noteBlob = Blob.valueOf(JSON.serialize(bundle));
+        Set<Id> parentIds = getAnalysisParentIds(sourceContentDocumentId);
+        Id internalParentId = getInternalAnalysisParentId(sourceContentDocumentId);
+        Id storageParentId = resolveWritableAttachmentParent(internalParentId, parentRecordId, sourceContentDocumentId);
+        String notePattern = buildNoteTitlePattern(sourceContentDocumentId);
+        String legacyNotePattern = buildLegacyNoteTitlePattern(sourceContentDocumentId);
 
         // Delete any existing attachments for this analysis to enforce single-record lifecycle
         List<Attachment> existing = [
             SELECT Id
             FROM Attachment
-            WHERE ParentId = :parentRecordId
-              AND Name = :noteTitle
+            WHERE ParentId IN :parentIds
+              AND (Name LIKE :notePattern OR Name LIKE :legacyNotePattern)
         ];
 
         if (!existing.isEmpty()) {
@@ -106,11 +143,11 @@ public with sharing class GeminiAnalysisNoteService {
 
         // Insert fresh attachment
         Attachment att = new Attachment();
-        att.ParentId = parentRecordId;
+        att.ParentId = storageParentId;
         att.Name = noteTitle;
         att.Body = noteBlob;
         att.ContentType = 'application/json';
-        att.Description = 'AI Analysis Store - auto-generated';
+        att.Description = 'Internal AI Analysis Store - auto-generated. Do not sync to Google Drive.';
         insert att;
 
         return att.Id;
@@ -142,6 +179,10 @@ public with sharing class GeminiAnalysisNoteService {
         return title;
     }
 
+    private static String buildNoteTitlePattern(Id sourceContentDocumentId) {
+        return '% - AI Analysis Store [' + String.escapeSingleQuotes(String.valueOf(sourceContentDocumentId)) + ']';
+    }
+
     @TestVisible
     private static String buildLegacyNoteTitle(String sourceTitle, Id sourceContentDocumentId) {
         String suffix = ' - AI Analysis Store [' + String.valueOf(sourceContentDocumentId).left(8) + ']';
@@ -150,6 +191,66 @@ public with sharing class GeminiAnalysisNoteService {
             title = sourceTitle.left(255 - suffix.length()) + suffix;
         }
         return title;
+    }
+
+    private static String buildLegacyNoteTitlePattern(Id sourceContentDocumentId) {
+        return '% - AI Analysis Store [' + String.escapeSingleQuotes(String.valueOf(sourceContentDocumentId).left(8)) + ']';
+    }
+
+    private static Set<Id> getAnalysisParentIds(Id sourceContentDocumentId) {
+        Set<Id> parentIds = new Set<Id>();
+        Id internalParentId = getInternalAnalysisParentId(sourceContentDocumentId);
+        if (internalParentId != null) {
+            parentIds.add(internalParentId);
+        }
+
+        Id legacyParentId = getParentRecordId(sourceContentDocumentId);
+        if (legacyParentId != null) {
+            parentIds.add(legacyParentId);
+        }
+
+        parentIds.add(UserInfo.getUserId());
+        return parentIds;
+    }
+
+    private static Id getInternalAnalysisParentId(Id sourceContentDocumentId) {
+        ContentVersion sourceVersion = getLatestSourceVersion(sourceContentDocumentId);
+        if (sourceVersion != null) {
+            List<Document_Processing_Log__c> logs = [
+                SELECT Id
+                FROM Document_Processing_Log__c
+                WHERE Content_Version_Id__c = :String.valueOf(sourceVersion.Id)
+                LIMIT 1
+            ];
+            if (!logs.isEmpty()) {
+                return logs[0].Id;
+            }
+        }
+
+        return UserInfo.getUserId();
+    }
+
+    private static Id resolveWritableAttachmentParent(Id internalParentId, Id parentRecordId, Id sourceContentDocumentId) {
+        if (isWritableAttachmentParent(internalParentId)) {
+            return internalParentId;
+        }
+        if (isWritableAttachmentParent(parentRecordId)) {
+            return parentRecordId;
+        }
+
+        Id linkedParentId = getParentRecordId(sourceContentDocumentId);
+        if (isWritableAttachmentParent(linkedParentId)) {
+            return linkedParentId;
+        }
+
+        return null;
+    }
+
+    private static Boolean isWritableAttachmentParent(Id parentId) {
+        if (parentId == null || String.valueOf(parentId).startsWith('005')) {
+            return false;
+        }
+        return parentId.getSObjectType() != User.SObjectType;
     }
 
     public static Id getParentRecordId(Id sourceContentDocumentId) {

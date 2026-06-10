@@ -1,29 +1,33 @@
-@IsTest
+@IsTest(SeeAllData=true)
 private class MetriportSchedulerTest {
 
     @IsTest
     static void testSchedulerExecution() {
 
-        // Create test patient Id
-        String testPatientId = 'TEST_PATIENT_123';
+        Account acc = [
+            SELECT Id, Metriport_Patient_Id__c
+            FROM Account
+            WHERE Metriport_Patient_Id__c != NULL
+            LIMIT 1
+        ];
 
-        // Create instance of scheduler
-        MetriportScheduler scheduler = new MetriportScheduler(testPatientId);
+        MetriportScheduler scheduler =
+            new MetriportScheduler(
+                acc.Metriport_Patient_Id__c
+            );
 
-        // Schedule the job
-        String cronExp = '0 0 0 1 1 ? 2099'; // Any future date
+        String cronExp = '0 0 0 1 1 ? 2099';
 
         Test.startTest();
+
         String jobId = System.schedule(
             'Test Metriport Scheduler Job',
             cronExp,
             scheduler
         );
+
         Test.stopTest();
 
-        // Verify job was created
         System.assertNotEquals(null, jobId);
-
-
     }
 }

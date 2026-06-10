@@ -1,0 +1,341 @@
+<template>
+    <div class="slds-p-around_medium">
+        <lightning-card icon-name="standard:file" title={computedTitle}>
+            <div slot="actions" class="header-actions">
+                <lightning-button
+                    label={aiToggleLabel}
+                    icon-name={aiToggleIcon}
+                    variant={aiToggleVariant}
+                    onclick={handleToggleAiFiles}
+                    class="ai-toggle-button">
+                </lightning-button>
+                <lightning-button
+                    label="Delete Selected"
+                    variant="destructive"
+                    icon-name="utility:delete"
+                    onclick={handleDeleteSelected}
+                    disabled={isDeleteDisabled}
+                    class="delete-selected-button">
+                </lightning-button>
+                <c-account-file-uploader
+                    record-id={recordId}
+                    icon-only
+                    icon-name="utility:upload"
+                    variant="border-filled"
+                    button-label="Upload File"
+                    allow-multiple
+                    onuploadsuccess={handleUploadSuccess}>
+                </c-account-file-uploader>
+                <lightning-button-icon
+                    icon-name="utility:refresh"
+                    alternative-text="Refresh"
+                    title="Refresh"
+                    variant="border-filled"
+                    onclick={handleRefreshButton}>
+                </lightning-button-icon>
+                <lightning-button-icon
+                    icon-name="utility:search"
+                    alternative-text="Search"
+                    title="Search"
+                    variant="border-filled"
+                    onclick={toggleSearch}>
+                </lightning-button-icon>
+            </div>
+
+            <div class="stored-files-content">
+                <template if:true={showSearch}>
+                    <div class="toolbar">
+                        <div class="search-grid">
+                            <lightning-input
+                                type="search"
+                                label="Search by file name"
+                                variant="label-hidden"
+                                placeholder="Search by file name..."
+                                class="search-input"
+                                onchange={handleNameSearch}
+                                value={searchKey}>
+                            </lightning-input>
+                            <lightning-input
+                                type="search"
+                                label="Search by service date"
+                                variant="label-hidden"
+                                placeholder="Search by service date (e.g., May 26, 2026)..."
+                                class="search-input"
+                                onchange={handleDateSearch}
+                                value={searchDate}>
+                            </lightning-input>
+                        </div>
+                        <div class="toolbar-count slds-text-body_small slds-text-color_weak">
+                            {totalFiles} file(s)
+                        </div>
+                    </div>
+                </template>
+
+                <div class="table-region">
+                    <template if:true={isLoading}>
+                        <div class="spinner-overlay">
+                            <lightning-spinner alternative-text="Loading files..." size="medium"></lightning-spinner>
+                        </div>
+                    </template>
+
+                    <template if:true={paginatedFileList.length}>
+                        <div class="files-table-wrapper">
+                            <table class="files-table">
+                                <thead>
+                                    <tr>
+                                        <th scope="col" class="col-select">
+                                            <lightning-input
+                                                type="checkbox"
+                                                variant="label-hidden"
+                                                label="Select all files"
+                                                checked={isAllSelected}
+                                                onchange={handleSelectAll}
+                                                class="row-checkbox">
+                                            </lightning-input>
+                                        </th>
+                                        <th scope="col" onclick={handleSort} data-field="name" class="col-title sortable">
+                                            File Name
+                                            <lightning-icon icon-name={sortIcon} size="xx-small" class="sort-icon"></lightning-icon>
+                                        </th>
+                                        <th scope="col" onclick={handleSort} data-field="sendToPortal" class="col-portal sortable">
+                                            Send to Portal
+                                        </th>
+                                        <th scope="col" onclick={handleSort} data-field="serviceDateDisplay" class="col-date sortable">
+                                            Date of Service
+                                        </th>
+                                        <th scope="col" onclick={handleSort} data-field="sourceType" class="col-source sortable">
+                                            Source Type
+                                        </th>
+                                        <th scope="col" onclick={handleSort} data-field="category" class="col-category sortable">
+                                            Category
+                                        </th>
+                                        <th scope="col" class="col-menu">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template for:each={paginatedFileList} for:item="file">
+                                        <tr key={file.key} class={file.rowClass}>
+                                            <td class="col-select">
+                                                <lightning-input
+                                                    type="checkbox"
+                                                    variant="label-hidden"
+                                                    label="Select file"
+                                                    checked={file.isSelected}
+                                                    data-id={file.id}
+                                                    onchange={handleFileCheckboxChange}
+                                                    class="row-checkbox">
+                                                </lightning-input>
+                                            </td>
+                                            <td class="col-title">
+                                                <div class="title-cell">
+                                                    <template if:true={file.hasChildren}>
+                                                        <button
+                                                            type="button"
+                                                            class="expand-toggle"
+                                                            data-id={file.id}
+                                                            onclick={handleToggleExpand}
+                                                            title="Toggle AI summaries">
+                                                            <lightning-icon
+                                                                icon-name={file.expandIcon}
+                                                                size="xx-small"
+                                                                alternative-text="Toggle AI summaries">
+                                                            </lightning-icon>
+                                                        </button>
+                                                    </template>
+                                                    <template if:false={file.hasChildren}>
+                                                        <span class="expand-spacer"></span>
+                                                    </template>
+                                                    <lightning-icon icon-name={file.iconName} size="x-small" class="file-icon"></lightning-icon>
+                                                    <a href={file.recordUrl}
+                                                       onclick={handleFileNameClick}
+                                                       data-id={file.id}
+                                                       class="title-link"
+                                                       title={file.name}>
+                                                        {file.name}
+                                                    </a>
+                                                </div>
+                                            </td>
+                                            <td class="col-portal">
+                                                <span class="portal-cell">
+                                                    <lightning-input
+                                                        type="checkbox"
+                                                        variant="label-hidden"
+                                                        label="Send to Portal"
+                                                        checked={file.sendToPortal}
+                                                        data-id={file.id}
+                                                        onchange={handleSendToPortalChange}
+                                                        class="portal-checkbox">
+                                                    </lightning-input>
+                                                </span>
+                                            </td>
+                                            <td class="col-date">{file.serviceDateDisplay}</td>
+                                            <td class="col-source">
+                                                <span class="type-pill">{file.sourceType}</span>
+                                            </td>
+                                            <td class="col-category">
+                                                <span class="type-pill">{file.category}</span>
+                                            </td>
+                                            <td class="col-menu">
+                                                <lightning-button-menu
+                                                    icon-name="utility:threedots_vertical"
+                                                    variant="border-filled"
+                                                    alternative-text="Actions"
+                                                    onselect={handleMenuSelect}
+                                                    data-id={file.id}
+                                                    menu-alignment="right"
+                                                    class="action-menu">
+                                                    <lightning-menu-item value="view_file" label="View File"></lightning-menu-item>
+                                                    <lightning-menu-item value="edit" label="Edit File Detail"></lightning-menu-item>
+                                                    <lightning-menu-item value="delete" label="Delete"></lightning-menu-item>
+                                                </lightning-button-menu>
+                                            </td>
+                                        </tr>
+                                        <template if:true={file.isExpanded}>
+                                            <template for:each={file.children} for:item="child">
+                                                <tr key={child.key} class="data-row child-row">
+                                                    <td class="col-select">
+                                                        <lightning-input
+                                                            type="checkbox"
+                                                            variant="label-hidden"
+                                                            label="Select file"
+                                                            checked={child.isSelected}
+                                                            data-id={child.id}
+                                                            onchange={handleFileCheckboxChange}
+                                                            class="row-checkbox">
+                                                        </lightning-input>
+                                                    </td>
+                                                    <td class="col-title">
+                                                        <div class="title-cell child-title-cell">
+                                                            <span class="thread-connector" aria-hidden="true">└──</span>
+                                                            <lightning-icon icon-name={child.iconName} size="x-small" class="file-icon"></lightning-icon>
+                                                            <a href={child.recordUrl}
+                                                               onclick={handleFileNameClick}
+                                                               data-id={child.id}
+                                                               class="title-link"
+                                                               title={child.name}>
+                                                                {child.name}
+                                                            </a>
+                                                            <span class="ai-badge">AI Summary</span>
+                                                        </div>
+                                                    </td>
+                                                    <td class="col-portal">
+                                                        <span class="portal-cell">
+                                                            <lightning-input
+                                                                type="checkbox"
+                                                                variant="label-hidden"
+                                                                label="Send to Portal"
+                                                                checked={child.sendToPortal}
+                                                                data-id={child.id}
+                                                                onchange={handleSendToPortalChange}
+                                                                class="portal-checkbox">
+                                                            </lightning-input>
+                                                        </span>
+                                                    </td>
+                                                    <td class="col-date">{child.serviceDateDisplay}</td>
+                                                    <td class="col-source">
+                                                        <span class="type-pill">{child.sourceType}</span>
+                                                    </td>
+                                                    <td class="col-category">
+                                                        <span class="type-pill">{child.category}</span>
+                                                    </td>
+                                                    <td class="col-menu">
+                                                        <lightning-button-menu
+                                                            icon-name="utility:threedots_vertical"
+                                                            variant="border-filled"
+                                                            alternative-text="Actions"
+                                                            onselect={handleMenuSelect}
+                                                            data-id={child.id}
+                                                            menu-alignment="right"
+                                                            class="action-menu">
+                                                            <lightning-menu-item value="view_file" label="View File"></lightning-menu-item>
+                                                            <lightning-menu-item value="edit" label="Edit File Detail"></lightning-menu-item>
+                                                            <lightning-menu-item value="delete" label="Delete"></lightning-menu-item>
+                                                        </lightning-button-menu>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </template>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </template>
+
+                    <template if:false={paginatedFileList.length}>
+                        <div class="empty-state">
+                            <lightning-icon icon-name="standard:file" size="large" alternative-text="No files"></lightning-icon>
+                            <p class="slds-text-heading_small slds-m-top_small">No Stored Files Found</p>
+                            <p class="slds-text-body_regular slds-text-color_weak slds-m-top_xx-small">
+                                No stored files are available for this record.
+                            </p>
+                        </div>
+                    </template>
+                </div>
+
+                <div class="pagination-footer">
+                    <div class="pagination-left">
+                        Page {currentPage} of {totalPages}
+                    </div>
+                    <div class="pagination-center">
+                        <lightning-button
+                            label="Previous"
+                            icon-name="utility:chevronleft"
+                            onclick={handlePrevious}
+                            disabled={isPreviousDisabled}>
+                        </lightning-button>
+                        <span class="page-status">
+                            {currentPage}
+                        </span>
+                        <lightning-button
+                            label="Next"
+                            icon-name="utility:chevronright"
+                            icon-position="right"
+                            onclick={handleNext}
+                            disabled={isNextDisabled}>
+                        </lightning-button>
+                    </div>
+                    <div class="pagination-right slds-text-body_small slds-text-color_weak">
+                        {totalFiles} total
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mass Delete Confirmation Modal -->
+            <template if:true={showDeleteModal}>
+                <section role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="delete-modal-heading"
+                    class="slds-modal slds-fade-in-open">
+                    <div class="slds-modal__container">
+                        <header class="slds-modal__header">
+                            <button
+                                class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                                title="Close"
+                                onclick={handleCloseDeleteModal}>
+                                <lightning-icon icon-name="utility:close" alternative-text="Close" size="small"></lightning-icon>
+                            </button>
+                            <h2 id="delete-modal-heading" class="slds-modal__title slds-hyphenate">Confirm Deletion</h2>
+                        </header>
+                        <div class="slds-modal__content slds-p-around_medium">
+                            <p>
+                                Are you sure you want to delete {selectedCount} selected file(s)?
+                                This action cannot be undone.
+                            </p>
+                        </div>
+                        <footer class="slds-modal__footer">
+                            <lightning-button
+                                label="Cancel"
+                                onclick={handleCloseDeleteModal}
+                                class="slds-m-right_x-small">
+                            </lightning-button>
+                            <lightning-button
+                                label="Delete"
+                                variant="destructive"
+                                onclick={confirmMassDelete}>
+                            </lightning-button>
+                        </footer>
+                    </div>
+                </section>
+                <div class="slds-backdrop slds-backdrop_open"></div>
+            </template>
+        </lightning-card>
+    </div>
+</template>

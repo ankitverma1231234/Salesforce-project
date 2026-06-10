@@ -12,9 +12,6 @@ public without sharing class AllergyIntoleranceHandler {
             
             List<Map<String, Object>> allergyResources = new List<Map<String, Object>>();
             
-            // -------------------------
-            // Collect AllergyIntolerance resources
-            // -------------------------
             if ('Bundle'.equals(resourceType)) {
                 List<Object> entries = (List<Object>) resource.get('entry');
                 if (entries != null) {
@@ -34,9 +31,6 @@ public without sharing class AllergyIntoleranceHandler {
             
             if (allergyResources.isEmpty()) return;
             
-            // -------------------------
-            // Collect incoming Allergy IDs
-            // -------------------------
             Set<String> incomingAllergyIds = new Set<String>();
             for (Map<String, Object> res : allergyResources) {
                 if (res.containsKey('id') && res.get('id') != null) {
@@ -44,9 +38,6 @@ public without sharing class AllergyIntoleranceHandler {
                 }
             }
             
-            // -------------------------
-            // Query existing AllergyIntolerance records
-            // -------------------------
             Set<String> existingAllergyIds = new Set<String>();
             if (!incomingAllergyIds.isEmpty()) {
                 for (AllergyIntolerance a : [
@@ -69,33 +60,70 @@ public without sharing class AllergyIntoleranceHandler {
                     deletedAllergyIds.add(audit.External_Id_Metriport__c);
                 }
             }
+
+            /* -------------------------
+               Dedup key: Allergy_Name__c + Generic__c
+               Fetch existing composite keys from AllergyIntolerance
+            -------------------------- */
+            // Collect patient SF IDs from incoming resources to scope dedupe query
+            Set<String> allergyPatientFhirIds = new Set<String>();
+            for (Map<String, Object> res2 : allergyResources) {
+                Map<String, Object> pm = (Map<String, Object>) res2.get('patient');
+                if (pm != null) {
+                    String ref2 = (String) pm.get('reference');
+                    if (!String.isBlank(ref2) && ref2.contains('/')) allergyPatientFhirIds.add(ref2.split('/')[1]);
+                }
+            }
+            Set<Id> allergyPatientIds = new Set<Id>();
+            if (!allergyPatientFhirIds.isEmpty()) {
+                for (Account a : [SELECT Id FROM Account WHERE IsPersonAccount = true AND Metriport_Patient_Id__c IN :allergyPatientFhirIds]) {
+                    allergyPatientIds.add(a.Id);
+                }
+            }
+            Set<String> existingAllergyDedupeKeys = new Set<String>();
+            if (!allergyPatientIds.isEmpty()) {
+                for (AllergyIntolerance a : [
+                    SELECT Allergy_Name__c, Generic__c
+                    FROM AllergyIntolerance
+                    WHERE Allergy_Name__c != null
+                      AND PatientId IN :allergyPatientIds
+                ]) {
+                    String key = buildAllergyDedupeKey(a.Allergy_Name__c, a.Generic__c);
+                    if (!String.isBlank(key)) existingAllergyDedupeKeys.add(key);
+                }
+            }
             
-            // -------------------------
-            // Build new AllergyIntolerance records (skip duplicates)
-            // -------------------------
             List<AllergyIntolerance> allergiesToInsert = new List<AllergyIntolerance>();
+            Set<String> inFlightAllergyDedupeKeys = new Set<String>();
+
             for (Map<String, Object> res : allergyResources) {
                 String allergyId = (String) res.get('id');
+
                 if (existingAllergyIds.contains(allergyId)) continue;
                 
                 if (deletedAllergyIds.contains(allergyId)) {
-                    System.debug('Skipping deleted AllergyIntolerance record with ID: ' + allergyId);
+                    System.debug('⏭️ Skipping deleted AllergyIntolerance: ' + allergyId);
                     continue;
                 }
                 
                 AllergyIntolerance allergy = parseSingleAllergy(res);
-                if (allergy != null) {
-                    allergy.AllergyId__c = allergyId;
-                    allergiesToInsert.add(allergy);
+                if (allergy == null) continue;
+
+                allergy.AllergyId__c = allergyId;
+
+                // Dedup by composite key: Allergy_Name__c + Generic__c
+                String dedupeKey = buildAllergyDedupeKey(allergy.Allergy_Name__c, allergy.Generic__c);
+                if (!String.isBlank(dedupeKey)) {
+                    if (existingAllergyDedupeKeys.contains(dedupeKey) || inFlightAllergyDedupeKeys.contains(dedupeKey)) {
+                        System.debug('⏭️ Skipping AllergyIntolerance (Composite Duplicate): ' + dedupeKey);
+                        continue;
+                    }
+                    inFlightAllergyDedupeKeys.add(dedupeKey);
                 }
+
+                allergiesToInsert.add(allergy);
             }
             
-            // -------------------------
-            // Insert safely
-            // -------------------------
-            // -------------------------
-            // Insert safely with per-record error logging
-            // -------------------------
             if (!allergiesToInsert.isEmpty()) {
                 Database.SaveResult[] results = Database.insert(allergiesToInsert, false);
                 
@@ -114,16 +142,14 @@ public without sharing class AllergyIntoleranceHandler {
                                 ' | Fields: ' + String.join(err.getFields(), ', ')
                             );
                         }
-                        
                         AllergyIntolerance failedAllergy = allergiesToInsert[i];
-                        
                         errorLogs.add(new Error_Log__c(
                             Object_API_Name__c    = 'AllergyIntolerance',
                             Error_Message__c      = String.join(errorMessages, '\n'),
                             Record_External_Id__c = failedAllergy.AllergyId__c,
                             Context__c            = 'parseAndInsertAllergies',
                             Stack_Trace__c        = 'PatientId: ' + failedAllergy.PatientId +
-                            ' | AllergyId: ' + failedAllergy.AllergyId__c
+                                                    ' | AllergyId: ' + failedAllergy.AllergyId__c
                         ));
                     }
                 }
@@ -132,7 +158,6 @@ public without sharing class AllergyIntoleranceHandler {
                     Database.insert(errorLogs, false);
                     System.debug('⚠️ Failed AllergyIntolerance inserts logged: ' + errorLogs.size());
                 }
-                
                 System.debug('✅ Inserted AllergyIntolerance records: ' + successCount +
                              ' | Failed: ' + (allergiesToInsert.size() - successCount));
             }
@@ -141,12 +166,18 @@ public without sharing class AllergyIntoleranceHandler {
             System.debug('❌ AllergyIntoleranceHandler error: ' + ex.getMessage());
         }
     }
+
+    private static String buildAllergyDedupeKey(String allergyName, String generic) {
+        String namePart    = String.isBlank(allergyName) ? '' : allergyName.trim().toLowerCase();
+        String genericPart = String.isBlank(generic)     ? '' : generic.trim().toLowerCase();
+        if (String.isBlank(namePart) && String.isBlank(genericPart)) return null;
+        return namePart + '|' + genericPart;
+    }
     
     private static AllergyIntolerance parseSingleAllergy(Map<String, Object> resource) {
         if (resource == null) return null;
         
         AllergyIntolerance allergy = new AllergyIntolerance();
-        
         allergy.PatientId = resolvePatientContact(resource);
         
         DateTime onsetDateTime = parseOnsetDateTime(resource);
@@ -156,10 +187,8 @@ public without sharing class AllergyIntoleranceHandler {
         
         parseReaction(resource, allergy);
         
-        // Map verificationStatus and clinicalStatus
         allergy.VerificationStatus = parseCodeableConcept((Map<String, Object>) resource.get('verificationStatus'));
         allergy.Status = parseCodeableConcept((Map<String, Object>) resource.get('clinicalStatus'));
-        
         
         return allergy;
     }
@@ -194,17 +223,13 @@ public without sharing class AllergyIntoleranceHandler {
             if (firstCoding instanceof Map<String, Object>) {
                 String display = (String) ((Map<String, Object>) firstCoding).get('display');
                 if (!String.isBlank(display)) return display;
-                // fallback to code
                 String code = (String) ((Map<String, Object>) firstCoding).get('code');
                 return code;
             }
         }
         
-        // fallback to text field
-        String text = (String) codeableConcept.get('text');
-        return text;
+        return (String) codeableConcept.get('text');
     }
-    
     
     private static DateTime parseOnsetDateTime(Map<String, Object> resource) {
         Object onsetObj = resource.get('onsetDateTime');
@@ -258,6 +283,8 @@ public without sharing class AllergyIntoleranceHandler {
                 String genericName = String.join(new List<String>(displays), ', ');
                 allergy.Generic__c = genericName;
                 allergy.Combine_allergy_and_Generic__c = allergyName + ',' + genericName;
+            }else{
+                allergy.Combine_allergy_and_Generic__c = allergyName;
             }
         }
     }

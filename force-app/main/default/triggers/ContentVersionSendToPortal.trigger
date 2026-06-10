@@ -1,5 +1,6 @@
 trigger ContentVersionSendToPortal on ContentVersion (after insert, after update) {
-    if (Trigger.isAfter && Trigger.isInsert) {
+    
+  if (Trigger.isAfter && Trigger.isInsert) {
         Set<Id> contentDocIds = new Set<Id>();
         for (ContentVersion cv : Trigger.new) {
             if (cv.ContentDocumentId != null) {
@@ -69,6 +70,9 @@ trigger ContentVersionSendToPortal on ContentVersion (after insert, after update
             boolean descriptionChange = oldCv.Description != newCv.Description;
             boolean dateChange = oldCv.Service_Date_Time__c != newCv.Service_Date_Time__c;
             boolean titleChange = oldCv.Title != newCv.Title;
+            boolean documentTypeChange = oldCv.Document_Type__c != newCv.Document_Type__c;
+            boolean sourceTypeChange = oldCv.Source_Type__c != newCv.Source_Type__c;
+            boolean categoryChange = oldCv.Category__c != newCv.Category__c;
             boolean wasEnabled = oldCv.Send_File_to_Portal__c == true;
             boolean isEnabled = newCv.Send_File_to_Portal__c == true;
             boolean isStillEnabled = wasEnabled && isEnabled;
@@ -76,7 +80,8 @@ trigger ContentVersionSendToPortal on ContentVersion (after insert, after update
             if (
                 (isEnabled && !wasEnabled)
                 ||
-                (isStillEnabled && (descriptionChange || dateChange || titleChange))
+                (isStillEnabled && (descriptionChange || dateChange || titleChange || documentTypeChange ||sourceTypeChange ||
+                categoryChange))
             ) {
                 contentDocumentIds.add(newCv.ContentDocumentId);
             }
@@ -98,7 +103,7 @@ trigger ContentVersionSendToPortal on ContentVersion (after insert, after update
         if(!contentDocumentIdsForAITrace.isEmpty()){
             system.debug('contentDocumentIdsForAITrace'+contentDocumentIdsForAITrace);
             List<ContentVersion> ConVerForAiFileToPortal = [Select Id,Send_File_to_Portal__c from ContentVersion where Related_File__c in :contentDocumentIdsForAITrace];
-            for(ContentVersion cv : ConVerForAiFileToPortal){
+            for(ContentVersion cv : ConVerForAiFileToPortal){ 
                 cv.Send_File_to_Portal__c = true ; 
             }
             if(!ConVerForAiFileToPortal.isEmpty()){
@@ -110,6 +115,5 @@ trigger ContentVersionSendToPortal on ContentVersion (after insert, after update
         if (!deletedFileIds.isEmpty() && !Test.isRunningTest()) {
             MedicalSalesforceDeleteRecord.deleteRecordFromThirdParty(deletedFileIds, 'ContentVersion');
         }
-    }
-    
+    }     
 }

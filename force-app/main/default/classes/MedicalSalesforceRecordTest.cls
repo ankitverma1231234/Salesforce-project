@@ -1,10 +1,6 @@
 @IsTest(SeeAllData=true)
 public class MedicalSalesforceRecordTest {
 
-    // ─────────────────────────────────────────────
-    //  HTTP Mock Classes
-    // ─────────────────────────────────────────────
-
     private class HttpSuccessMock implements HttpCalloutMock {
         public HTTPResponse respond(HTTPRequest req) {
             HttpResponse res = new HttpResponse();
@@ -23,10 +19,6 @@ public class MedicalSalesforceRecordTest {
         }
     }
 
-    // ─────────────────────────────────────────────
-    //  Shared helpers
-    // ─────────────────────────────────────────────
-
     private static void ensureApiConfig() {
         BatonPortalAPI__c cfg = BatonPortalAPI__c.getOrgDefaults();
         if (cfg == null || String.isBlank(cfg.Api_Key__c)) {
@@ -41,11 +33,13 @@ public class MedicalSalesforceRecordTest {
         TriggerSettings__c settings = TriggerSettings__c.getInstance();
         if (settings == null) {
             insert new TriggerSettings__c(
-                SetupOwnerId = UserInfo.getOrganizationId(),
-                Account__c   = true
+                SetupOwnerId               = UserInfo.getOrganizationId(),
+                Account__c                 = true,
+                Care_Observation_Checkbox__c = true
             );
-        } else if (!settings.Account__c) {
-            settings.Account__c = true;
+        } else {
+            settings.Account__c                 = true;
+            settings.Care_Observation_Checkbox__c = true;
             upsert settings;
         }
     }
@@ -54,11 +48,39 @@ public class MedicalSalesforceRecordTest {
         TriggerSettings__c settings = TriggerSettings__c.getInstance();
         if (settings == null) {
             insert new TriggerSettings__c(
-                SetupOwnerId = UserInfo.getOrganizationId(),
-                Account__c   = false
+                SetupOwnerId               = UserInfo.getOrganizationId(),
+                Account__c                 = false,
+                Care_Observation_Checkbox__c = false
             );
         } else {
-            settings.Account__c = false;
+            settings.Account__c                 = false;
+            settings.Care_Observation_Checkbox__c = false;
+            upsert settings;
+        }
+    }
+
+    private static void enableCareObservationTrigger() {
+        TriggerSettings__c settings = TriggerSettings__c.getInstance();
+        if (settings == null) {
+            insert new TriggerSettings__c(
+                SetupOwnerId               = UserInfo.getOrganizationId(),
+                Care_Observation_Checkbox__c = true
+            );
+        } else {
+            settings.Care_Observation_Checkbox__c = true;
+            upsert settings;
+        }
+    }
+
+    private static void disableCareObservationTrigger() {
+        TriggerSettings__c settings = TriggerSettings__c.getInstance();
+        if (settings == null) {
+            insert new TriggerSettings__c(
+                SetupOwnerId               = UserInfo.getOrganizationId(),
+                Care_Observation_Checkbox__c = false
+            );
+        } else {
+            settings.Care_Observation_Checkbox__c = false;
             upsert settings;
         }
     }
@@ -97,10 +119,6 @@ public class MedicalSalesforceRecordTest {
             .getRecordTypeInfosByDeveloperName()
             .get('PersonAccount').getRecordTypeId();
     }
-
-    // ─────────────────────────────────────────────
-    //  sendPatientDataToThirdParty – single Id
-    // ─────────────────────────────────────────────
 
     @IsTest
     static void testSendSingleAccountInsert() {
@@ -144,10 +162,6 @@ public class MedicalSalesforceRecordTest {
         System.assert(true, 'Single account update executed successfully');
     }
 
-    // ─────────────────────────────────────────────
-    //  sendPatientDataToThirdParty – Set<Id>
-    // ─────────────────────────────────────────────
-
     @IsTest
     static void testSendBatchAccounts() {
         ensureApiConfig();
@@ -168,10 +182,6 @@ public class MedicalSalesforceRecordTest {
 
         System.assert(true, 'Batch method executed successfully');
     }
-
-    // ─────────────────────────────────────────────
-    //  Null / empty guard tests
-    // ─────────────────────────────────────────────
 
     @IsTest
     static void testNullAccountId() {
@@ -202,10 +212,6 @@ public class MedicalSalesforceRecordTest {
         Test.stopTest();
         System.assert(true, 'Empty account ID set handled gracefully');
     }
-
-    // ─────────────────────────────────────────────
-    //  processSingleAccountSynchronously
-    // ─────────────────────────────────────────────
 
     @IsTest
     static void testProcessSingleAccountSynchronously() {
@@ -436,6 +442,28 @@ public class MedicalSalesforceRecordTest {
     }
 
     @IsTest
+    static void testBuildTargetedPayloadCareObservation() {
+        Account acc = getOrCreatePersonAccount();
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId  = acc.Id,
+            Name               = 'Heart rate',
+            Category           = 'Vital-Signs',
+            ObservationStatus  = 'Final',
+            Value_Quantity__c  = '72'
+        );
+        insert obs;
+
+        Test.startTest();
+        Map<String, Object> payload = MedicalSalesforceRecord.buildTargetedPayload(
+            acc.Id, 'CareObservation', new Set<Id>{ obs.Id }
+        );
+        Test.stopTest();
+
+        System.assertNotEquals(null, payload, 'Payload should not be null');
+        System.assert(payload.containsKey('labs'), 'Payload should contain labs');
+    }
+
+    @IsTest
     static void testBuildTargetedPayloadUnknownObjectType() {
         Account acc = getOrCreatePersonAccount();
 
@@ -449,6 +477,340 @@ public class MedicalSalesforceRecordTest {
         System.assert(payload.containsKey('accountId'), 'Payload should still contain accountId');
     }
 
+    // ─────────────────────────────────────────────
+    //  getLabs
+    // ─────────────────────────────────────────────
+
+    @IsTest
+    static void testGetLabs() {
+        Account acc = getOrCreatePersonAccount();
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId = acc.Id,
+            Name              = 'Heart rate',
+            Category          = 'Vital-Signs',
+            ObservationStatus = 'Final',
+            Value_Quantity__c = '72',
+            Range_High__c     = '100'
+        );
+        insert obs;
+
+        Test.startTest();
+        List<Map<String, Object>> labs =
+            MedicalSalesforceRecord.getLabs(acc.Id, new Set<Id>{ obs.Id });
+        Test.stopTest();
+
+        System.assertNotEquals(null, labs, 'Labs list should not be null');
+        System.assert(labs.size() > 0, 'Should return at least 1 lab');
+        System.assertEquals('Heart rate',  labs[0].get('Name'));
+        System.assertEquals('Vital-Signs', labs[0].get('Category'));
+        System.assertEquals('Final',       labs[0].get('ObservationStatus'));
+        System.assertEquals('72',          labs[0].get('Value_Quantity'));
+        System.assertEquals('100',         labs[0].get('Range_High'));
+    }
+
+    @IsTest
+    static void testGetLabsEmptyRecordIds() {
+        Account acc = getOrCreatePersonAccount();
+
+        Test.startTest();
+        List<Map<String, Object>> labs =
+            MedicalSalesforceRecord.getLabs(acc.Id, new Set<Id>());
+        Test.stopTest();
+
+        System.assertNotEquals(null, labs, 'Should return empty list, not null');
+        System.assertEquals(0, labs.size(), 'Empty recordIds should return empty list');
+    }
+
+    @IsTest
+    static void testGetLabsNullAccountId() {
+        Test.startTest();
+        List<Map<String, Object>> labs =
+            MedicalSalesforceRecord.getLabs(null, new Set<Id>());
+        Test.stopTest();
+
+        System.assertNotEquals(null, labs, 'Should return empty list for null accountId');
+        System.assertEquals(0, labs.size(), 'Null accountId should return empty list');
+    }
+
+    @IsTest
+    static void testGetLabsNullRangeHigh() {
+        Account acc = getOrCreatePersonAccount();
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId = acc.Id,
+            Name              = 'Blood Glucose',
+            Category          = 'Laboratory',
+            ObservationStatus = 'Final',
+            Value_Quantity__c = '95',
+            Range_High__c     = null
+        );
+        insert obs;
+
+        Test.startTest();
+        List<Map<String, Object>> labs =
+            MedicalSalesforceRecord.getLabs(acc.Id, new Set<Id>{ obs.Id });
+        Test.stopTest();
+
+        System.assert(labs.size() > 0, 'Should return the lab');
+        System.assertEquals(null, labs[0].get('Range_High'), 'Range_High should be null');
+    }
+
+    // ─────────────────────────────────────────────
+    //  CareObservationTrigger — Insert
+    // ─────────────────────────────────────────────
+
+    @IsTest
+    static void testCareObservationTriggerOnInsert() {
+        ensureApiConfig();
+        enableCareObservationTrigger();
+        Account acc = getOrCreatePersonAccount();
+
+        Test.setMock(HttpCalloutMock.class, new HttpSuccessMock());
+        Test.startTest();
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId = acc.Id,
+            Name              = 'Heart rate',
+            Category          = 'Vital-Signs',
+            ObservationStatus = 'Registered',
+            Value_Quantity__c = '80'
+        );
+        insert obs;
+        Test.stopTest();
+
+        CareObservation inserted = [SELECT Id FROM CareObservation WHERE Id = :obs.Id];
+        System.assertNotEquals(null, inserted.Id, 'CareObservation should be inserted and trigger fired');
+    }
+
+    @IsTest
+    static void testCareObservationTriggerOnUpdate() {
+        ensureApiConfig();
+        enableCareObservationTrigger();
+        Account acc = getOrCreatePersonAccount();
+
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId = acc.Id,
+            Name              = 'Heart rate',
+            Category          = 'Vital-Signs',
+            ObservationStatus = 'Registered',
+            Value_Quantity__c = '80'
+        );
+        insert obs;
+
+        Test.setMock(HttpCalloutMock.class, new HttpSuccessMock());
+        Test.startTest();
+        obs.Value_Quantity__c = '90';
+        update obs;
+        Test.stopTest();
+
+        CareObservation updated = [SELECT Value_Quantity__c FROM CareObservation WHERE Id = :obs.Id];
+        System.assertEquals('90', updated.Value_Quantity__c, 'Value should be updated and trigger fired');
+    }
+
+    @IsTest
+    static void testCareObservationTriggerOnDelete() {
+        ensureApiConfig();
+        enableCareObservationTrigger();
+        Account acc = getOrCreatePersonAccount();
+
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId = acc.Id,
+            Name              = 'Heart rate',
+            Category          = 'Vital-Signs',
+            ObservationStatus = 'Registered',
+            Value_Quantity__c = '80'
+        );
+        insert obs;
+
+        Test.startTest();
+        delete obs;
+        Test.stopTest();
+
+        List<CareObservation> deleted = [SELECT Id FROM CareObservation WHERE Id = :obs.Id];
+        System.assertEquals(0, deleted.size(), 'CareObservation should be deleted and audit log trigger fired');
+    }
+
+    @IsTest
+    static void testCareObservationTriggerDisabled() {
+        ensureApiConfig();
+        disableCareObservationTrigger();
+        Account acc = getOrCreatePersonAccount();
+
+        Test.setMock(HttpCalloutMock.class, new HttpSuccessMock());
+        Test.startTest();
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId = acc.Id,
+            Name              = 'Heart rate',
+            Category          = 'Vital-Signs',
+            ObservationStatus = 'Registered',
+            Value_Quantity__c = '80'
+        );
+        insert obs;
+        Test.stopTest();
+
+        CareObservation inserted = [SELECT Id FROM CareObservation WHERE Id = :obs.Id];
+        System.assertNotEquals(null, inserted.Id, 'Record inserted but trigger should have exited early');
+    }
+
+    // ─────────────────────────────────────────────
+    //  CareObservationTrigger — Body Weight Sync
+    // ─────────────────────────────────────────────
+
+    @IsTest
+    static void testCareObservationTriggerBodyWeightInPounds() {
+        ensureApiConfig();
+        enableCareObservationTrigger();
+        Account acc = getOrCreatePersonAccount();
+
+        Test.setMock(HttpCalloutMock.class, new HttpSuccessMock());
+        Test.startTest();
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId = acc.Id,
+            Name              = 'Body weight',
+            Category          = 'Vital-Signs',
+            ObservationStatus = 'Final',
+            Value_Quantity__c = '160'   // already pounds
+        );
+        insert obs;
+        Test.stopTest();
+
+        Account updated = [SELECT Weight_in_pounds__pc FROM Account WHERE Id = :acc.Id];
+        System.assertEquals(160.00, updated.Weight_in_pounds__pc, 'Weight in pounds should be synced correctly');
+    }
+
+    @IsTest
+    static void testCareObservationTriggerBodyWeightInKg() {
+        ensureApiConfig();
+        enableCareObservationTrigger();
+        Account acc = getOrCreatePersonAccount();
+
+        Test.setMock(HttpCalloutMock.class, new HttpSuccessMock());
+        Test.startTest();
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId = acc.Id,
+            Name              = 'Body weight',
+            Category          = 'Vital-Signs',
+            ObservationStatus = 'Final',
+            Value_Quantity__c = '70 kg'  // kg → should convert to lbs
+        );
+        insert obs;
+        Test.stopTest();
+
+        Account updated = [SELECT Weight_in_pounds__pc FROM Account WHERE Id = :acc.Id];
+        System.assertEquals(154.32, updated.Weight_in_pounds__pc, 'Weight should be converted from kg to lbs');
+    }
+
+    // ─────────────────────────────────────────────
+    //  CareObservationTrigger — Body Height Sync
+    // ─────────────────────────────────────────────
+
+    @IsTest
+    static void testCareObservationTriggerBodyHeightInInches() {
+        ensureApiConfig();
+        enableCareObservationTrigger();
+        Account acc = getOrCreatePersonAccount();
+
+        Test.setMock(HttpCalloutMock.class, new HttpSuccessMock());
+        Test.startTest();
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId = acc.Id,
+            Name              = 'Body height',
+            Category          = 'Vital-Signs',
+            ObservationStatus = 'Final',
+            Value_Quantity__c = '68'   // already inches
+        );
+        insert obs;
+        Test.stopTest();
+
+        Account updated = [SELECT Height_in_inches__pc FROM Account WHERE Id = :acc.Id];
+        System.assertEquals(68.00, updated.Height_in_inches__pc, 'Height in inches should be synced correctly');
+    }
+
+    @IsTest
+    static void testCareObservationTriggerBodyHeightInCm() {
+        ensureApiConfig();
+        enableCareObservationTrigger();
+        Account acc = getOrCreatePersonAccount();
+
+        Test.setMock(HttpCalloutMock.class, new HttpSuccessMock());
+        Test.startTest();
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId = acc.Id,
+            Name              = 'Body height',
+            Category          = 'Vital-Signs',
+            ObservationStatus = 'Final',
+            Value_Quantity__c = '170 cm'  // cm → should convert to inches
+        );
+        insert obs;
+        Test.stopTest();
+
+        Account updated = [SELECT Height_in_inches__pc FROM Account WHERE Id = :acc.Id];
+        System.assertEquals(66.93, updated.Height_in_inches__pc, 'Height should be converted from cm to inches');
+    }
+
+    @IsTest
+    static void testCareObservationTriggerBlankValueQuantity() {
+        ensureApiConfig();
+        enableCareObservationTrigger();
+        Account acc = getOrCreatePersonAccount();
+
+        Test.setMock(HttpCalloutMock.class, new HttpSuccessMock());
+        Test.startTest();
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId = acc.Id,
+            Name              = 'Body weight',
+            Category          = 'Vital-Signs',
+            ObservationStatus = 'Final',
+            Value_Quantity__c = null   // blank — should skip weight sync
+        );
+        insert obs;
+        Test.stopTest();
+
+        System.assert(true, 'Blank Value_Quantity__c should be skipped without error');
+    }
+
+    @IsTest
+    static void testCareObservationTriggerInvalidNumericValue() {
+        ensureApiConfig();
+        enableCareObservationTrigger();
+        Account acc = getOrCreatePersonAccount();
+
+        Test.setMock(HttpCalloutMock.class, new HttpSuccessMock());
+        Test.startTest();
+        CareObservation obs = new CareObservation(
+            ObservedSubjectId = acc.Id,
+            Name              = 'Body weight',
+            Category          = 'Vital-Signs',
+            ObservationStatus = 'Final',
+            Value_Quantity__c = 'abc'   // invalid — should be caught and skipped
+        );
+        insert obs;
+        Test.stopTest();
+
+        System.assert(true, 'Invalid numeric value should be caught and skipped without error');
+    }
+
+    @IsTest
+    static void testCareObservationTriggerNullObservedSubjectId() {
+        ensureApiConfig();
+        enableCareObservationTrigger();
+
+        Test.setMock(HttpCalloutMock.class, new HttpSuccessMock());
+        Test.startTest();
+        // ObservedSubjectId is null — trigger should skip this record
+        try {
+            CareObservation obs = new CareObservation(
+                Name              = 'Heart rate',
+                Category          = 'Vital-Signs',
+                ObservationStatus = 'Final',
+                Value_Quantity__c = '72'
+            );
+            insert obs;
+        } catch (Exception e) {
+            // Expected if ObservedSubjectId is required
+        }
+        Test.stopTest();
+
+        System.assert(true, 'Null ObservedSubjectId handled gracefully');
+    }
 
     // ─────────────────────────────────────────────
     //  getAllergies
@@ -780,10 +1142,6 @@ public class MedicalSalesforceRecordTest {
         System.assertEquals('Cardiology', professionals[0].get('specialty'));
     }
 
-    // ─────────────────────────────────────────────
-    //  formatDateTime — all branches
-    // ─────────────────────────────────────────────
-
     @IsTest
     static void testFormatDateTimeWithDatetime() {
         Test.startTest();
@@ -813,10 +1171,6 @@ public class MedicalSalesforceRecordTest {
         System.assertEquals(null, formatted, 'Null input should return null');
     }
 
-    // ─────────────────────────────────────────────
-    //  sendHttpRequest
-    // ─────────────────────────────────────────────
-
     @IsTest
     static void testSendHttpRequest() {
         ensureApiConfig();
@@ -833,10 +1187,6 @@ public class MedicalSalesforceRecordTest {
         System.assertNotEquals(null, response, 'Response should not be null');
         System.assertEquals(200, response.getStatusCode(), 'Status code should be 200');
     }
-
-    // ─────────────────────────────────────────────
-    //  HTTP success / failure response handling
-    // ─────────────────────────────────────────────
 
     @IsTest
     static void testHttpSuccessResponse() {
@@ -939,10 +1289,6 @@ public class MedicalSalesforceRecordTest {
         System.assert(true, 'Blank API key handled gracefully in sendToThirdPartyFuture');
     }
 
-    // ─────────────────────────────────────────────
-    //  Complete end-to-end workflow
-    // ─────────────────────────────────────────────
-
     @IsTest
     static void testCompleteWorkflow() {
         ensureApiConfig();
@@ -979,11 +1325,6 @@ public class MedicalSalesforceRecordTest {
 
         System.assert(true, 'Complete workflow executed successfully');
     }
-
-    // ─────────────────────────────────────────────
-    //  BasicDetailAccount trigger — after insert
-    // ─────────────────────────────────────────────
-
     @IsTest
     static void testBasicDetailAccountTriggerOnInsert() {
         ensureApiConfig();
@@ -1005,25 +1346,24 @@ public class MedicalSalesforceRecordTest {
     }
 
     @IsTest
-static void testBasicDetailAccountTriggerOnUpdate() {
-    ensureApiConfig();
-    ensureTriggerEnabled();
-    Account acc = getOrCreatePersonAccount();
-    
-    acc.Send_Member_to_portal__c = true;
-    update acc;
+    static void testBasicDetailAccountTriggerOnUpdate() {
+        ensureApiConfig();
+        ensureTriggerEnabled();
+        Account acc = getOrCreatePersonAccount();
 
-    Test.setMock(HttpCalloutMock.class, new HttpSuccessMock());
-    Test.startTest();
-    acc.Patient_Summary__c = 'Updated summary';
-    update acc;
-    Test.stopTest();
+        acc.Send_Member_to_portal__c = true;
+        update acc;
 
-    Account updated = [SELECT Patient_Summary__c FROM Account WHERE Id = :acc.Id];
-    System.assertEquals('Updated summary', updated.Patient_Summary__c, 'Trigger should have fired on update');
-}
+        Test.setMock(HttpCalloutMock.class, new HttpSuccessMock());
+        Test.startTest();
+        acc.Patient_Summary__c = 'Updated summary';
+        update acc;
+        Test.stopTest();
 
-   
+        Account updated = [SELECT Patient_Summary__c FROM Account WHERE Id = :acc.Id];
+        System.assertEquals('Updated summary', updated.Patient_Summary__c, 'Trigger should have fired on update');
+    }
+
     @IsTest
     static void testBasicDetailAccountTriggerDisabled() {
         ensureApiConfig();

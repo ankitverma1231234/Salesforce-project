@@ -31,8 +31,8 @@ public with sharing class AccountFilesController {
                    Description,
                    Organization_Name__c,
                    Send_File_to_Portal__c,
-                   Service_Date_Time__c,
-                   Source__c,
+                   Date_of_Service_Display__c,
+                   Source_Type__c,
                    Related_File__c
             FROM ContentVersion
             WHERE ContentDocumentId IN :contentDocIds
@@ -50,10 +50,10 @@ public with sharing class AccountFilesController {
             fw.description = cv.Description;
             fw.provider = cv.Organization_Name__c;
             fw.sendFileToPortal = cv.Send_File_to_Portal__c;
-            fw.serviceDatetime = cv.Service_Date_Time__c;
-            fw.source = cv.Source__c;
+            fw.source = cv.Source_Type__c;
             fw.relatedFile = cv.Related_File__c;
             fw.fileExtension = cv.FileType != null ? cv.FileType.toLowerCase() : '';
+            fw.serviceDateStr = cv.Date_of_Service_Display__c;
             files.add(fw);
         }
 
@@ -86,7 +86,7 @@ public with sharing class AccountFilesController {
         @AuraEnabled public String description;
         @AuraEnabled public String provider;
         @AuraEnabled public Boolean sendFileToPortal;
-        @AuraEnabled public Datetime serviceDatetime;
+        @AuraEnabled public Date serviceDateStr;
         @AuraEnabled public String source;
         @AuraEnabled public String relatedFile;
         @AuraEnabled public String fileExtension;

@@ -22,6 +22,7 @@
 * Manual trigger (all records):
 *   AiFileNamingDailyJob.executeForContentVersion(null);
 */
+
 public with sharing class AiFileNamingDailyJob
 implements Schedulable, Database.Batchable<SObject>, Database.AllowsCallouts, Database.Stateful {
     
@@ -271,19 +272,21 @@ implements Schedulable, Database.Batchable<SObject>, Database.AllowsCallouts, Da
                     );
         
         if (contentVersionId != null) {
-            // ── Case 1: Single record — ek Id k liye ──
-            // Specific ContentVersion Id ke liye
-            
-            
-            Database.executeBatch(
-                new GeminiFileInsightBackfillBatch(true, false,contentVersionId ),
-                1
-            );
+            // Single record — flip Ready_for_Ai_Summery__c → trigger fires next step
+            List<Document_Processing_Log__c> logs = [
+                SELECT Id
+                FROM Document_Processing_Log__c
+                WHERE Content_Version_Id__c = :contentVersionId
+                LIMIT 1
+            ];
+            if (!logs.isEmpty()) {
+                logs[0].Ready_for_Ai_Summery__c = true;
+                update logs[0];
+            }
         } else {
-            // ── Case 2: Bulk — sabke liye ──
-            
+            // Bulk / scheduler flow — chain directly as before
             Database.executeBatch(
-                new GeminiFileInsightBackfillBatch(false, false, NULL),
+                new GeminiFileInsightBackfillBatch(false, false, null),
                 1
             );
         }

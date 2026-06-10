@@ -182,6 +182,14 @@ private static Boolean isTemplateSource(String sourceType) {
                             upd.Error_Message__c = null;
         
                             mapSuccessFields(upd, root);
+                            String packageRuntimeId = normalizeText(firstNonBlank(
+    safeString(root.get('run_id')),
+    safeString(root.get('package_id'))
+));
+
+if (!String.isBlank(packageRuntimeId)) {
+    putIfFieldExists(upd, 'Package_Runtime_Id__c', packageRuntimeId);
+}
         
                             String firstAccessLink = extractRecipientAccessLink(
                                 root,

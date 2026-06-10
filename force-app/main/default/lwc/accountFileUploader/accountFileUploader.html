@@ -1,0 +1,78 @@
+<template>
+    <template if:true={iconOnly}>
+        <lightning-button-icon
+            icon-name={iconName}
+            variant={variant}
+            size={iconSize}
+            alternative-text={effectiveButtonLabel}
+            title={effectiveButtonLabel}
+            disabled={isButtonDisabled}
+            onclick={handleOpenUpload}>
+        </lightning-button-icon>
+    </template>
+
+    <template if:false={iconOnly}>
+        <lightning-button
+            label={effectiveButtonLabel}
+            variant={variant}
+            icon-name={iconName}
+            icon-position={iconPosition}
+            disabled={isButtonDisabled}
+            onclick={handleOpenUpload}>
+        </lightning-button>
+    </template>
+
+    <template if:true={showUploadModal}>
+        <section role="dialog"
+                 tabindex="-1"
+                 aria-modal="true"
+                 aria-labelledby="afu-modal-heading"
+                 class="slds-modal slds-fade-in-open">
+            <div class="slds-modal__container">
+
+                <header class="slds-modal__header">
+                    <button
+                        class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                        title="Close"
+                        onclick={handleCloseUpload}>
+                        <lightning-icon icon-name="utility:close" alternative-text="Close" size="small"></lightning-icon>
+                    </button>
+                    <h2 id="afu-modal-heading" class="slds-modal__title slds-hyphenate">
+                        {modalTitle}
+                    </h2>
+                </header>
+
+                <div class="slds-modal__content slds-p-around_medium afu-modal-body">
+                    <template if:true={isUploading}>
+                        <div class="afu-spinner-wrap">
+                            <lightning-spinner alternative-text="Uploading file..." size="medium"></lightning-spinner>
+                        </div>
+                    </template>
+
+                    <p class="slds-text-body_small slds-text-color_weak slds-m-bottom_small">
+                        {helpText}
+                    </p>
+
+                    <lightning-file-upload
+                        label="Select files to upload"
+                        name="afu-file-uploader"
+                        accept={acceptedFormatList}
+                        record-id={recordId}
+                        multiple={allowMultiple}
+                        onuploadfinished={handleUploadFinished}>
+                    </lightning-file-upload>
+                </div>
+
+                <footer class="slds-modal__footer">
+                    <lightning-button
+                        label="Close"
+                        variant="neutral"
+                        onclick={handleCloseUpload}>
+                    </lightning-button>
+                </footer>
+
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+</template>

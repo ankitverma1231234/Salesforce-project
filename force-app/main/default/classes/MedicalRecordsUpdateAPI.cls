@@ -214,19 +214,6 @@ PROCESS BULK UPDATE BY TYPE - Routes to specific bulk method
         }
     }
     
-    /* ============================================================================
-AUTO-DETECT OBJECT TYPE FROM RECORD ID
-============================================================================ */
-    private static String detectObjectType(String recordId) {
-        try {
-            Id recId = Id.valueOf(recordId);
-            Schema.SObjectType sobjectType = recId.getSObjectType();
-            return sobjectType.getDescribe().getName();
-        } catch (Exception e) {
-            System.debug('Error detecting object type: ' + e.getMessage());
-            return null;
-        }
-    }
     
     /* ============================================================================
 BULK UPDATE SURGERY - Using HealthCareProcedure Object
@@ -2130,6 +2117,7 @@ public static List<ResponseWrapper> bulkUpsertFiles(List<Map<String, Object>> re
     List<ResponseWrapper> responses = new List<ResponseWrapper>();
     if (records == null || records.isEmpty()) return responses;
     List<Map<String, Object>> results = FileUpsertHelper.processFiles(records);
+   queueCreatedFilesForExternalSync(results);
 
     for (Map<String, Object> result : results) {
         ResponseWrapper resp = new ResponseWrapper();
@@ -2142,6 +2130,101 @@ public static List<ResponseWrapper> bulkUpsertFiles(List<Map<String, Object>> re
     }
 
     return responses;
+}
+
+  private static void queueCreatedFilesForExternalSync(List<Map<String, Object>> fileResults) {
+    try {
+        Set<Id> contentVersionIds = new Set<Id>();
+        
+        for (Map<String, Object> result : fileResults) {
+            if (result == null) continue;
+            
+            Boolean isSuccess = (Boolean) result.get('success');
+            if (isSuccess != true) continue;
+            
+            String message = (String) result.get('message');
+            String versionId = (String) result.get('id');
+            
+            if (message == 'File created' && !String.isBlank(versionId)) {
+                contentVersionIds.add(Id.valueOf(versionId));
+            }
+        }
+        
+        if (contentVersionIds.isEmpty()) {
+            System.debug('DEBUG: No ContentVersions to sync');
+            return;
+        }
+        
+        Map<Id, Id> documentIdToLinkedEntityId = new Map<Id, Id>();
+        for (ContentVersion cv : [
+            SELECT Id, ContentDocumentId, FirstPublishLocationId
+            FROM ContentVersion
+            WHERE Id IN :contentVersionIds
+              AND ContentDocumentId != null
+              AND FirstPublishLocationId != null
+        ]) {
+            documentIdToLinkedEntityId.put(cv.ContentDocumentId, cv.FirstPublishLocationId);
+        }
+        
+        if (documentIdToLinkedEntityId.isEmpty()) {
+            System.debug('DEBUG: No ContentDocuments found for sync');
+            return;
+        }
+        
+        // Verify ContentDocumentLinks exist
+        Set<Id> documentIds    = documentIdToLinkedEntityId.keySet();
+        Set<Id> linkedEntityIds = new Set<Id>(documentIdToLinkedEntityId.values());
+        Set<Id> attachedContentDocumentIds = new Set<Id>();
+        
+        for (ContentDocumentLink link : [
+            SELECT ContentDocumentId
+            FROM ContentDocumentLink
+            WHERE ContentDocumentId IN :documentIds
+              AND LinkedEntityId IN :linkedEntityIds
+        ]) {
+            attachedContentDocumentIds.add(link.ContentDocumentId);
+        }
+        
+        if (attachedContentDocumentIds.isEmpty()) {
+            System.debug('DEBUG: No ContentDocumentLinks found for sync');
+            return;
+        }
+        
+        List<File_External_Sync_Event__e> events = new List<File_External_Sync_Event__e>();
+       
+        List<Id> allDocIds = new List<Id>(attachedContentDocumentIds);
+        Integer chunkSize = 50;
+        
+        for (Integer i = 0; i < allDocIds.size(); i += chunkSize) {
+            Integer endIdx = Math.min(i + chunkSize, allDocIds.size());
+            List<Id> chunk = new List<Id>();
+            
+            for (Integer j = i; j < endIdx; j++) {
+                chunk.add(allDocIds[j]);
+            }
+            
+            events.add(new File_External_Sync_Event__e(
+                Content_Document_Ids__c = JSON.serialize(chunk)
+            ));
+        }
+        
+        List<Database.SaveResult> publishResults = EventBus.publish(events);
+        
+        for (Integer i = 0; i < publishResults.size(); i++) {
+            if (publishResults[i].isSuccess()) {
+                System.debug('DEBUG: Platform Event published for chunk ' + i);
+            } else {
+                System.debug(LoggingLevel.ERROR, 
+                    'ERROR: Failed to publish Platform Event: ' + 
+                    publishResults[i].getErrors()[0].getMessage());
+            }
+        }
+        
+    } catch (Exception e) {
+        System.debug(LoggingLevel.ERROR,
+            'ERROR: queueCreatedFilesForExternalSync failed: ' + 
+            e.getMessage() + '\n' + e.getStackTraceString());
+    }
 }
     
     

@@ -74,6 +74,7 @@ public static void parseAndInsertMedications(String rawJson) {
             }
 
         List<Medication> medsToInsert = new List<Medication>();
+
         for (Map<String, Object> res : medResources) {
             String medId = (String) res.get('id');
             if (existingMeds.containsKey(medId)) continue;
@@ -108,7 +109,6 @@ public static void parseAndInsertMedications(String rawJson) {
             }
         }
     }
-
 
             medsToInsert.add(med);
         }
@@ -158,6 +158,22 @@ public static void parseAndInsertMedications(String rawJson) {
     }
 }
 
+/* -------------------------
+   Helper: meta.lastUpdated 12-month gate
+   Returns true if lastUpdated is within the last 12 months (or missing).
+-------------------------- */
+private static Boolean isWithin12Months(Map<String, Object> resource) {
+    Object metaRaw = resource.get('meta');
+    if (!(metaRaw instanceof Map<String, Object>)) return true;
+
+    String lastUpdatedStr = (String) ((Map<String, Object>) metaRaw).get('lastUpdated');
+    if (String.isBlank(lastUpdatedStr)) return true;
+
+    Datetime lastUpdated = parseFhirDateTime(lastUpdatedStr);
+    if (lastUpdated == null) return true;
+
+    return lastUpdated >= Datetime.now().addMonths(-12);
+}
 
 private static Medication parseSingleMedication(Map<String, Object> resource) {
     if (resource == null) return null;
@@ -243,6 +259,11 @@ public static void parseAndInsertMedicationAdministrations(String rawJson) {
 
                 if (!'MedicationAdministration'.equals((String) res.get('resourceType'))) continue;
 
+                if (!isWithin12Months(res)) {
+                    System.debug('⏭️ Skipping MedicationAdministration (older than 12 months): ' + res.get('id'));
+                    continue;
+                }
+
                 String adminId = (String) res.get('id');
                 if (!String.isBlank(adminId)) {
                     adminIds.add(adminId);
@@ -300,6 +321,45 @@ public static void parseAndInsertMedicationAdministrations(String rawJson) {
                 }
             }
 
+            /* -------------------------
+               Dedup key: MedicationId + StartDate + EndDate
+               Fetch existing composite keys from MedicationAdministration
+            -------------------------- */
+            // Collect patient FHIR IDs from subject references to scope dedupe query
+            Set<String> adminPatientFhirIds = new Set<String>();
+            for (Object o2 : entries) {
+                if (!(o2 instanceof Map<String, Object>)) continue;
+                Object r2 = ((Map<String, Object>) o2).get('resource');
+                if (!(r2 instanceof Map<String, Object>)) continue;
+                Map<String, Object> res2 = (Map<String, Object>) r2;
+                if (!'MedicationAdministration'.equals((String) res2.get('resourceType'))) continue;
+                Object subjRaw = res2.get('subject');
+                if (subjRaw instanceof Map<String, Object>) {
+                    String ref2 = (String) ((Map<String, Object>) subjRaw).get('reference');
+                    if (!String.isBlank(ref2) && ref2.contains('/')) adminPatientFhirIds.add(ref2.split('/')[1]);
+                }
+            }
+            Set<Id> adminPatientIds = new Set<Id>();
+            if (!adminPatientFhirIds.isEmpty()) {
+                for (Account a : [SELECT Id FROM Account WHERE Metriport_Patient_Id__c IN :adminPatientFhirIds]) {
+                    adminPatientIds.add(a.Id);
+                }
+            }
+            Set<String> existingAdminDedupeKeys = new Set<String>();
+            if (!adminPatientIds.isEmpty()) {
+                for (MedicationAdministration ma : [
+                    SELECT MedicationId, StartDate, EndDate
+                    FROM MedicationAdministration
+                    WHERE MedicationId != null
+                      AND PatientId IN :adminPatientIds
+                ]) {
+                    String key = buildMedAdminDedupeKey(ma.MedicationId, ma.StartDate, ma.EndDate);
+                    if (!String.isBlank(key)) existingAdminDedupeKeys.add(key);
+                }
+            }
+
+            Set<String> inFlightAdminDedupeKeys = new Set<String>();
+
             for (Object o : entries) {
 
                 if (!(o instanceof Map<String, Object>)) continue;
@@ -316,8 +376,6 @@ public static void parseAndInsertMedicationAdministrations(String rawJson) {
                 String adminId = (String) res.get('id');
 
                 if (existingAdminIds.contains(adminId) || deletedAdminIds.contains(adminId)) {
-
-                    System.debug('⛔ Skipping MedicationAdministration (Duplicate/Deleted): ' + adminId);
                     continue;
                 }
 
@@ -327,6 +385,17 @@ public static void parseAndInsertMedicationAdministrations(String rawJson) {
                 if (ma != null) {
 
                     ma.MedicationAdministrationId__c = adminId;
+
+                    // Dedup by composite key: MedicationId + StartDate + EndDate
+                    String dedupeKey = buildMedAdminDedupeKey(ma.MedicationId, ma.StartDate, ma.EndDate);
+                    if (!String.isBlank(dedupeKey)) {
+                        if (existingAdminDedupeKeys.contains(dedupeKey) || inFlightAdminDedupeKeys.contains(dedupeKey)) {
+                            System.debug('⛔ Skipping MedicationAdministration (Composite Duplicate): ' + dedupeKey);
+                            continue;
+                        }
+                        inFlightAdminDedupeKeys.add(dedupeKey);
+                    }
+
                     adminsToInsert.add(ma);
                 }
             }
@@ -449,6 +518,17 @@ public static void parseAndInsertMedicationAdministrations(String rawJson) {
 
         System.debug('❌ Error parsing MedicationAdministration: ' + e.getMessage());
     }
+}
+
+/* -------------------------
+   Helper: build MedicationAdministration dedupe key
+-------------------------- */
+private static String buildMedAdminDedupeKey(Id medicationId, Datetime startDate, Datetime endDate) {
+    String medPart   = (medicationId != null) ? String.valueOf(medicationId) : '';
+    String startPart = (startDate != null) ? String.valueOf(startDate) : '';
+    String endPart   = (endDate   != null) ? String.valueOf(endDate)   : '';
+    if (String.isBlank(medPart) && String.isBlank(startPart) && String.isBlank(endPart)) return null;
+    return medPart + '|' + startPart + '|' + endPart;
 }
 
     
@@ -681,9 +761,27 @@ private static MedicationAdministration parseSingleMedicationAdministration(
             }
         }
 
+        /* -------------------------
+           Dedup key: ProblemName + ProblemDescription + OnsetStartDateTime
+           Fetch existing composite keys from HealthCondition
+        -------------------------- */
+        Set<Id> condPatientIds = new Set<Id>(patientToMemberMap.values());
+        Set<String> existingCondDedupeKeys = new Set<String>();
+        if (!condPatientIds.isEmpty()) {
+            for (HealthCondition hc : [
+                SELECT ProblemName
+                FROM HealthCondition
+                WHERE ProblemName != null
+                  AND PatientId IN :condPatientIds
+            ]) {
+                String key = buildConditionDedupeKey(hc.ProblemName);
+                if (!String.isBlank(key)) existingCondDedupeKeys.add(key);
+            }
+        }
 
             List<HealthCondition> toInsert =
                 new List<HealthCondition>();
+            Set<String> inFlightCondDedupeKeys = new Set<String>();
                 
             for (Map<String, Object> res : conditionResources) {
             
@@ -706,6 +804,15 @@ private static MedicationAdministration parseSingleMedicationAdministration(
                     parseSingleCondition(res, patientToMemberMap);
             
                 if (mh != null) {
+                    // Dedup by composite key: ProblemName + ProblemDescription + OnsetStartDateTime
+                    String dedupeKey = buildConditionDedupeKey(mh.ProblemName);
+                    if (!String.isBlank(dedupeKey)) {
+                        if (existingCondDedupeKeys.contains(dedupeKey) || inFlightCondDedupeKeys.contains(dedupeKey)) {
+                            System.debug('⏭️ Skipping Condition (Composite Duplicate): ' + dedupeKey);
+                            continue;
+                        }
+                        inFlightCondDedupeKeys.add(dedupeKey);
+                    }
                     toInsert.add(mh);
                 }
             }
@@ -759,6 +866,16 @@ private static MedicationAdministration parseSingleMedicationAdministration(
             );
         }
     }
+
+/* -------------------------
+   Helper: build Condition dedupe key
+-------------------------- */
+private static String buildConditionDedupeKey(String problemName) {
+    String namePart  = String.isBlank(problemName) ? '' : problemName.trim().toLowerCase();
+
+    if (String.isBlank(namePart) ) return null;
+    return namePart;
+}
 
     
                       private static HealthCondition parseSingleCondition(
@@ -921,6 +1038,11 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
 
                 if (!'MedicationStatement'.equals((String) res.get('resourceType'))) continue;
 
+                if (!isWithin12Months(res)) {
+                    System.debug('⏭️ Skipping MedicationStatement (older than 12 months): ' + res.get('id'));
+                    continue;
+                }
+
                 medResources.add(res);
 
                 Object subjectRaw = res.get('subject');
@@ -1000,7 +1122,26 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
             }
         }
 
+        /* -------------------------
+           Dedup key: MedicationId + Frequency__c + Dose__c
+           Fetch existing composite keys from MedicationStatement
+        -------------------------- */
+        Set<Id> stmtPatientIds = new Set<Id>(patientMap.values());
+        Set<String> existingMedStmtDedupeKeys = new Set<String>();
+        if (!stmtPatientIds.isEmpty()) {
+            for (MedicationStatement ms : [
+                SELECT MedicationId, Frequency__c, Dose__c
+                FROM MedicationStatement
+                WHERE MedicationId != null
+                  AND PatientId IN :stmtPatientIds
+            ]) {
+                String key = buildMedStatementDedupeKey(ms.MedicationId, ms.Frequency__c, ms.Dose__c);
+                if (!String.isBlank(key)) existingMedStmtDedupeKeys.add(key);
+            }
+        }
+
         List<MedicationStatement> medsToInsert = new List<MedicationStatement>();
+        Set<String> inFlightMedStmtDedupeKeys = new Set<String>();
         
         for (Map<String, Object> res : medResources) {
             String medStmtId = (String) res.get('id');
@@ -1009,7 +1150,18 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
              if (deletedMedStmtIds.contains(medStmtId)) continue;
         
             MedicationStatement ms = parseSingleMedicationStatement(res, patientMap, medicationMap);
-            if (ms != null) medsToInsert.add(ms);
+            if (ms != null) {
+                // Dedup by composite key: MedicationId + Frequency__c + Dose__c
+                String dedupeKey = buildMedStatementDedupeKey(ms.MedicationId, ms.Frequency__c, ms.Dose__c);
+                if (!String.isBlank(dedupeKey)) {
+                    if (existingMedStmtDedupeKeys.contains(dedupeKey) || inFlightMedStmtDedupeKeys.contains(dedupeKey)) {
+                        System.debug('⏭️ Skipping MedicationStatement (Composite Duplicate): ' + dedupeKey);
+                        continue;
+                    }
+                    inFlightMedStmtDedupeKeys.add(dedupeKey);
+                }
+                medsToInsert.add(ms);
+            }
         }
 
 
@@ -1057,6 +1209,17 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
     } catch (Exception e) {
         System.debug('❌ Error parsing MedicationStatements: ' + e.getMessage());
     }
+}
+
+/* -------------------------
+   Helper: build MedicationStatement dedupe key
+-------------------------- */
+private static String buildMedStatementDedupeKey(Id medicationId, String frequency, String dose) {
+    String medPart   = (medicationId != null) ? String.valueOf(medicationId) : '';
+    String freqPart  = String.isBlank(frequency) ? '' : frequency.trim().toLowerCase();
+    String dosePart  = String.isBlank(dose)      ? '' : dose.trim().toLowerCase();
+    if (String.isBlank(medPart) && String.isBlank(freqPart) && String.isBlank(dosePart)) return null;
+    return medPart + '|' + freqPart + '|' + dosePart;
 }
 
         
@@ -1249,9 +1412,27 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
                         deletedProcedureIds.add(del.External_Id_Metriport__c);
                     }
                 }
+
+                /* -------------------------
+                   Dedup key: Surgery_Name__c + Performed_Date_Time__c
+                   Fetch existing composite keys from HealthCareProcedure
+                -------------------------- */
+                Set<Id> procPatientIds = new Set<Id>(patientToMemberMap.values());
+                Set<String> existingProcDedupeKeys = new Set<String>();
+                if (!procPatientIds.isEmpty()) {
+                    for (HealthCareProcedure hcp : [
+                        SELECT Surgery_Name__c
+                        FROM HealthCareProcedure
+                        WHERE  Patient__c IN :procPatientIds
+                    ]) {
+                        String key = buildProcedureDedupeKey(hcp.Surgery_Name__c);
+                        if (!String.isBlank(key)) existingProcDedupeKeys.add(key);
+                    }
+                }
         
                 List<HealthCareProcedure> toInsert =
                     new List<HealthCareProcedure>();
+                Set<String> inFlightProcDedupeKeys = new Set<String>();
         
                 for (Map<String, Object> res : procedureResources) {
         
@@ -1273,6 +1454,15 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
                         parseSingleProcedure(res, patientToMemberMap);
         
                     if (hcp != null) {
+                        // Dedup by composite key: Surgery_Name__c + Performed_Date_Time__c
+                        String dedupeKey = buildProcedureDedupeKey(hcp.Surgery_Name__c);
+                        if (!String.isBlank(dedupeKey)) {
+                            if (existingProcDedupeKeys.contains(dedupeKey) || inFlightProcDedupeKeys.contains(dedupeKey)) {
+                                System.debug('⛔ Skipping Procedure (Composite Duplicate): ' + dedupeKey);
+                                continue;
+                            }
+                            inFlightProcDedupeKeys.add(dedupeKey);
+                        }
                         toInsert.add(hcp);
                     }
                 }
@@ -1326,6 +1516,15 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
             }
         }
 
+/* -------------------------
+   Helper: build Procedure dedupe key
+-------------------------- */
+private static String buildProcedureDedupeKey(String surgeryName) {
+    String namePart = String.isBlank(surgeryName) ? '' : surgeryName.trim().toLowerCase();
+
+    if (String.isBlank(namePart)) return null;
+    return namePart;
+}
 
     
            private static HealthCareProcedure parseSingleProcedure(
@@ -1665,36 +1864,51 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
     
         private static Boolean isSurgeryProcedure(Map<String, Object> resource) {
         Object codeRaw = resource.get('code');
-        if (!(codeRaw instanceof Map<String, Object>)) return false;
-    
+
+        // No code block at all — allow through
+        if (!(codeRaw instanceof Map<String, Object>)) return true;
+
         Object codingListRaw = ((Map<String, Object>) codeRaw).get('coding');
-        if (!(codingListRaw instanceof List<Object>)) return false;
-    
-        for (Object codingObj : (List<Object>) codingListRaw) {
+
+        // code block exists but has no coding array — allow through
+        if (!(codingListRaw instanceof List<Object>)) return true;
+
+        List<Object> codingList = (List<Object>) codingListRaw;
+
+        // Empty coding array — allow through
+        if (codingList.isEmpty()) return true;
+
+        // Has coding entries — check if any qualify as surgery
+        // If none of the codings are parseable integer CPT codes, allow through
+        Boolean hasParseableCode = false;
+
+        for (Object codingObj : codingList) {
             if (!(codingObj instanceof Map<String, Object>)) continue;
-    
+
             String codeStr = (String) ((Map<String, Object>) codingObj).get('code');
             if (String.isBlank(codeStr)) continue;
-    
+
             String systems = (String) ((Map<String, Object>) codingObj).get('system');
-            
-            Boolean isCptSystem = (systems == null) 
-                || systems.containsIgnoreCase('cpt')
-                || systems.containsIgnoreCase('ama')
-                || systems.containsIgnoreCase('hcpcs');
-                
+
             if (systems != null && systems.containsIgnoreCase('snomed')) continue;
-    
+
             Integer codeInt;
             try {
                 codeInt = Integer.valueOf(codeStr);
             } catch (Exception e) {
+                // Non-numeric code — not a CPT code, skip this coding entry
                 continue;
             }
-    
+
+            // Has at least one parseable integer code — apply surgery range filter
+            hasParseableCode = true;
             if (isInSurgeryRange(codeInt)) return true;
         }
-    
+
+        // If no parseable integer CPT codes found at all, allow through
+        if (!hasParseableCode) return true;
+
+        // Had CPT codes but none were in surgery range — skip
         return false;
     }
     

@@ -85,11 +85,11 @@ global with sharing class MetriportWebhookHandler {
              //fhirObjectMapping.parseAndInsertFamilyMemberHistory(patientJson);
             
             //Before Encounters Needed to Insert the Location
-            //System.enqueueJob(new ProcedureJob(patientJson));
+           // System.enqueueJob(new PractitionerJob(patientJson));
             //System.enqueueJob(new MedicationDispenseJob(patientJson));
 
             
-           //System.enqueueJob(new MetriportPatientDocumentQueueable(patientJson));
+           System.enqueueJob(new MetriportPatientDocumentQueueable(patientJson));
             
             
 

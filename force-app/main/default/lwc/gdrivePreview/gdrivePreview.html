@@ -1,0 +1,39 @@
+<template>
+    <lightning-card title="Preview" icon-name="doctype:gdrive">
+        <lightning-button
+            slot="actions"
+            label="Open"
+            icon-name="utility:new_window"
+            onclick={openInDrive}
+            disabled={showEmptyMessage}>
+        </lightning-button>
+
+        <div class="slds-p-horizontal_small slds-p-bottom_small">
+            <template lwc:if={hasError}>
+                <div class="slds-text-color_error slds-p-vertical_small">
+                    {error}
+                </div>
+            </template>
+
+            <template lwc:if={hasUrl}>
+                <iframe
+                    src={embedUrl}
+                    width="100%"
+                    height="600"
+                    frameborder="0"
+                    allow="autoplay"
+                    allowfullscreen="true">
+                </iframe>
+            </template>
+
+            <template lwc:if={showEmptyMessage}>
+                <div class="slds-text-color_weak slds-p-vertical_small slds-text-align_center">
+                    No public file URL available on this record.
+                    <br/>
+                    Please add a Google Drive share link to the
+                    <b>File Public URL</b> field.
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>

@@ -7,6 +7,10 @@ public class MetriportPayloadBatch implements Database.Batchable<String> {
         'AllergyIntolerance',
         'Immunization',
         'Medication',
+         'MedicationAdministration',
+        'MedicationRequest',
+        'MedicationDispense',
+        'MedicationStatement',
         'RelatedPerson',
         'FamilyMemberHistory',
         'Organization',
@@ -70,7 +74,22 @@ public class MetriportPayloadBatch implements Database.Batchable<String> {
             }
             when 'Medication' {
                 System.enqueueJob(new MedicationJob(jsonData));
-            }        
+            }  
+             when 'MedicationAdministration' {
+                System.enqueueJob(new MedicationAdministrationJob(jsonData));
+            }
+
+            when 'MedicationRequest' {
+                System.enqueueJob(new MedicationRequestJob(jsonData));
+            }
+
+            when 'MedicationDispense' {
+                System.enqueueJob(new MedicationDispenseJob(jsonData));
+            }
+
+            when 'MedicationStatement' {
+                System.enqueueJob(new MedicationStatementJob(jsonData));
+            }
             when 'RelatedPerson' {
                 System.enqueueJob(new RelatedPersonJob(jsonData));
             }

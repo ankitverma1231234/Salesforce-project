@@ -110,6 +110,47 @@ phone = finalPhone;
         return c.Id;
     }
 
+@AuraEnabled
+public static Id createCaseAutomated(Id accountId) {
+    System.debug('=== createCaseAutomated START === accountId: ' + accountId);
+
+    Account acc = getPersonAccount(accountId);
+    System.debug('Account fetched: ' + acc.Name);
+
+    String dobStr = acc.Date_of_Birth__pc != null
+        ? DateTime.newInstance(acc.Date_of_Birth__pc, Time.newInstance(0,0,0,0)).format('yyyy-MM-dd')
+        : null;
+
+    List<String> allergyIds = new List<String>();
+    for (AllergyIntolerance a : getAllergies(accountId)) { allergyIds.add(a.Id); }
+
+    List<String> medicationIds = new List<String>();
+    for (MedicationStatement m : getMedications(accountId)) { medicationIds.add(m.Id); }
+
+    List<String> healthConditionIds = new List<String>();
+    for (HealthCondition h : getHealthConditions(accountId)) { healthConditionIds.add(h.Id); }
+
+    List<String> procedureIds = new List<String>();
+    for (HealthCareProcedure p : getHealthCareProcedures(accountId)) { procedureIds.add(p.Id); }
+
+    System.debug('Child counts -> Allergies: ' + allergyIds.size()
+        + ', Medications: ' + medicationIds.size()
+        + ', Conditions: ' + healthConditionIds.size()
+        + ', Procedures: ' + procedureIds.size());
+
+    Id newCaseId = createCase(
+        accountId, acc.Name, acc.PersonEmail, dobStr,
+        acc.PersonMailingCity, acc.PersonMailingState, acc.PersonMailingCountry,
+        acc.PersonMailingPostalCode, acc.PersonMailingStreet, '',
+        acc.Maiden_Name__pc, acc.Biological_Sex_at_Birth__c, '',
+        JSON.serialize(allergyIds), JSON.serialize(medicationIds),
+        JSON.serialize(healthConditionIds), JSON.serialize(procedureIds)
+    );
+
+    System.debug('=== createCaseAutomated END === Case created: ' + newCaseId);
+    return newCaseId;
+}
+
     private static List<String> parseIds(String idsJson) {
         if (String.isBlank(idsJson)) {
             return new List<String>();
@@ -186,7 +227,16 @@ phone = finalPhone;
         
         System.debug('Generated JSON: ' + jsonString);
         String fielname = DateTime.now().format('yyyy-MM-dd') + '  ' + System.Label.Metriport_Case_Name;
-        generateAndAttachPDF(caseId,jsonString,fielname);
+      if (!Test.isRunningTest()) {
+
+    System.enqueueJob(
+        new GeneratePdfQueueable(
+            caseId,
+            jsonString,
+            fielname
+        )
+    );
+}
         
          //Create ContentVersion (file)
         ContentVersion cv = new ContentVersion();
@@ -200,54 +250,7 @@ phone = finalPhone;
         
         //System.debug('JSON file attached to Case: ' + cv.Id);
     }	
-     @future(callout=true)
-    public static void generateAndAttachPDF(String recordId, String requestBody, String fileName) {
-        try {
-            // Make the callout
-            HttpRequest req = new HttpRequest();
-            req.setEndpoint(Label.PDF_Generator_API_Endpoint);
-            req.setMethod('POST');
-            req.setHeader('Content-Type', 'application/json');
-            req.setTimeout(120000); // 120 seconds timeout
-            req.setBody(requestBody);
-            
-            Http http = new Http();
-            HttpResponse res = http.send(req);
-            
-            if (res.getStatusCode() == 200) {
-                // Get the blob response
-                Blob pdfBlob = res.getBodyAsBlob();
-                
-                // Create attachment
-                Attachment attach = new Attachment();
-                attach.Name = fileName + '.pdf';
-                attach.Body = pdfBlob;
-                attach.ParentId = recordId;
-                attach.ContentType = 'application/pdf';
-                
-                //insert attach;
-                 ContentVersion cv = new ContentVersion();
-                cv.Title = fileName + '.pdf';
-                cv.PathOnClient = cv.Title;
-                cv.VersionData = pdfBlob;
-                cv.FirstPublishLocationId = recordId;
-                cv.IsMajorVersion = true;
-                
-                insert cv;
-                
-                System.debug('PDF generated and attached successfully. Attachment ID: ' + attach.Id);
-            } else {
-                System.debug('Error: HTTP Status Code ' + res.getStatusCode());
-                System.debug('Response Body: ' + res.getBody());
-                throw new CalloutException('Failed to generate PDF. Status: ' + res.getStatusCode());
-            }
-            
-        } catch (Exception e) {
-            System.debug('Exception occurred: ' + e.getMessage());
-            System.debug('Stack Trace: ' + e.getStackTraceString());
-            throw e;
-        }
-    }
+   
     
     // Helper method to escape special characters in JSON strings
     private static String escapeJson(String str) {

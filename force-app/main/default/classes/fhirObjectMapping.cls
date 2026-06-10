@@ -159,7 +159,7 @@ public static void parseAndInsertEncounters(String rawJson) {
         }
 
         /* -------------------------
-           Skip duplicates
+           Skip duplicates (FHIR Id)
         -------------------------- */
         Set<String> visitFhirIds = new Set<String>();
         for (Map<String, Object> res : encounterResources) {
@@ -189,22 +189,52 @@ public static void parseAndInsertEncounters(String rawJson) {
             ]) {
                 deletedVisitIds.add(del.External_Id_Metriport__c);
             }
-		}
+        }
+
+        /* -------------------------
+           Dedup key: Visit_Name__c + PlaceId + PlannedVisitStartTime
+           Fetch existing composite keys from Visit
+        -------------------------- */
+        Set<Id> patientAccountIds = new Set<Id>(patientToContactMap.values());
+        Set<String> existingVisitDedupeKeys = new Set<String>();
+        if (!patientAccountIds.isEmpty()) {
+            for (Visit v : [
+                SELECT Visit_Name__c, PlaceId, PlannedVisitStartTime
+                FROM Visit
+                WHERE AccountId IN :patientAccountIds
+            ]) {
+                String key = buildVisitDedupeKey(v.Visit_Name__c, v.PlaceId, v.PlannedVisitStartTime);
+                if (!String.isBlank(key)) existingVisitDedupeKeys.add(key);
+            }
+        }
 
         /* -------------------------
            Create Visit records
         -------------------------- */
         List<Visit> toInsert = new List<Visit>();
+        Set<String> inFlightDedupeKeys = new Set<String>();
+
         for (Map<String, Object> res : encounterResources) {
             String visitId = (String) res.get('id');
             if (existingVisitIds.contains(visitId) ||
                 deletedVisitIds.contains(visitId)) {
-            
                 System.debug('Skipping Visit (Duplicate/Deleted): ' + visitId);
                 continue;
             }
             Visit v = parseSingleEncounter(res, patientToContactMap, locationMap, conditionMap, practitionerMap);
-            if (v != null) toInsert.add(v);
+            if (v == null) continue;
+
+            // Dedup by composite key: Visit_Name__c + PlaceId + PlannedVisitStartTime
+            String dedupeKey = buildVisitDedupeKey(v.Visit_Name__c, v.PlaceId, v.PlannedVisitStartTime);
+            if (!String.isBlank(dedupeKey)) {
+                if (existingVisitDedupeKeys.contains(dedupeKey) || inFlightDedupeKeys.contains(dedupeKey)) {
+                    System.debug('Skipping Visit (Composite Duplicate): ' + dedupeKey);
+                    continue;
+                }
+                inFlightDedupeKeys.add(dedupeKey);
+            }
+
+            toInsert.add(v);
         }
 
        if (!toInsert.isEmpty()) {
@@ -251,6 +281,26 @@ public static void parseAndInsertEncounters(String rawJson) {
     } catch (Exception e) {
         System.debug('❌ Error parsing Encounter: ' + e.getMessage());
     }
+}
+
+/* -------------------------
+   Helper: build Organization dedupe key
+-------------------------- */
+private static String buildOrgDedupeKey(String name) {
+    String namePart = String.isBlank(name) ? '' : name.trim().toLowerCase();
+    if (String.isBlank(namePart)) return null;
+    return namePart;
+}
+
+/* -------------------------
+   Helper: build Visit dedupe key
+-------------------------- */
+private static String buildVisitDedupeKey(String visitName, Id placeId, Datetime startTime) {
+    String namePart  = String.isBlank(visitName) ? '' : visitName.trim().toLowerCase();
+    String placePart = (placeId != null) ? String.valueOf(placeId) : '';
+    String timePart  = (startTime != null) ? String.valueOf(startTime) : '';
+    if (String.isBlank(namePart) && String.isBlank(placePart) && String.isBlank(timePart)) return null;
+    return namePart + '|' + placePart + '|' + timePart;
 }
 
 /* -------------------------
@@ -513,13 +563,26 @@ private static Visit parseSingleEncounter(
                    Prepare HealthCareFacility records
                    → Use ANY PatientId from Bundle
                 -------------------------- */
-                List<HealthCareFacility> hfToInsert = new List<HealthCareFacility>();
-        
                 // pick one PatientId (Bundle-level)
                 String bundlePatientId = patientIds.iterator().next();
                 Id accountId = patientAccountMap.get(bundlePatientId);
         
                 if (accountId == null) return;
+
+                // Dedup key: Name — scoped to this patient's account
+                Set<String> existingOrgDedupeKeys = new Set<String>();
+                for (HealthCareFacility hf : [
+                    SELECT Name
+                    FROM HealthCareFacility
+                    WHERE Name != null
+                      AND AccountId = :accountId
+                ]) {
+                    String key = buildOrgDedupeKey(hf.Name);
+                    if (!String.isBlank(key)) existingOrgDedupeKeys.add(key);
+                }
+
+                List<HealthCareFacility> hfToInsert = new List<HealthCareFacility>();
+                Set<String> inFlightOrgDedupeKeys = new Set<String>();
         
                 for (Map<String, Object> res : orgResources) {
                     String orgId = (String) res.get('id');
@@ -601,6 +664,16 @@ private static Visit parseSingleEncounter(
                         }
                     }
         
+                    // Dedup by composite key: Name
+                    String orgDedupeKey = buildOrgDedupeKey(hf.Name);
+                    if (!String.isBlank(orgDedupeKey)) {
+                        if (existingOrgDedupeKeys.contains(orgDedupeKey) || inFlightOrgDedupeKeys.contains(orgDedupeKey)) {
+                            System.debug('⏭️ Skipping Organization (Composite Duplicate): ' + orgDedupeKey);
+                            continue;
+                        }
+                        inFlightOrgDedupeKeys.add(orgDedupeKey);
+                    }
+
                     hfToInsert.add(hf);
                 }
         
@@ -961,11 +1034,30 @@ if (!patientIds.isEmpty()) {
                     deletedPractitionerIds.add(del.External_Id_Metriport__c);
                 }
             }
+
+            /* -------------------------
+               Dedup key: Name + Phone__c
+               Fetch existing composite keys from HealthcarePractitionerFacility
+            -------------------------- */
+            Set<Id> practPatientAccountIds = new Set<Id>(patientAccountMap.values());
+            Set<String> existingPractitionerDedupeKeys = new Set<String>();
+            if (!practPatientAccountIds.isEmpty()) {
+                for (HealthcarePractitionerFacility hp : [
+                    SELECT Name, Phone__c
+                    FROM HealthcarePractitionerFacility
+                    WHERE Name != null
+                      AND AccountId IN :practPatientAccountIds
+                ]) {
+                    String key = buildPractitionerDedupeKey(hp.Name, hp.Phone__c);
+                    if (!String.isBlank(key)) existingPractitionerDedupeKeys.add(key);
+                }
+            }
     
             /* -------------------------
                Build Practitioner Records
             -------------------------- */
             Set<String> processedPractitionerIds = new Set<String>();
+            Set<String> inFlightPractitionerDedupeKeys = new Set<String>();
             List<HealthcarePractitionerFacility> toInsert =
                 new List<HealthcarePractitionerFacility>();
     
@@ -992,7 +1084,16 @@ if (!patientIds.isEmpty()) {
 
     
                 if (hp != null) {
-                 processedPractitionerIds.add(practitionerId);
+                    // Dedup by composite key: Name + Phone__c
+                    String dedupeKey = buildPractitionerDedupeKey(hp.Name, hp.Phone__c);
+                    if (!String.isBlank(dedupeKey)) {
+                        if (existingPractitionerDedupeKeys.contains(dedupeKey) || inFlightPractitionerDedupeKeys.contains(dedupeKey)) {
+                            System.debug('⏭️ Skipping Practitioner (Composite Duplicate): ' + dedupeKey);
+                            continue;
+                        }
+                        inFlightPractitionerDedupeKeys.add(dedupeKey);
+                    }
+                    processedPractitionerIds.add(practitionerId);
                     toInsert.add(hp);
                 }
             }
@@ -1045,8 +1146,17 @@ if (!patientIds.isEmpty()) {
             System.debug('❌ Error parsing Practitioner: ' + e.getMessage());
         }
     }
+
+/* -------------------------
+   Helper: build Practitioner dedupe key
+-------------------------- */
+private static String buildPractitionerDedupeKey(String name, String phone) {
+    String namePart  = String.isBlank(name)  ? '' : name.trim().toLowerCase();
+    String phonePart = String.isBlank(phone) ? '' : phone.trim();
+    if (String.isBlank(namePart) && String.isBlank(phonePart)) return null;
+    return namePart + '|' + phonePart;
+}
     
-        
       private static void insertInBatches(
         List<HealthcarePractitionerFacility> records,
         Integer batchSize
@@ -1304,10 +1414,41 @@ if (!incomingObservationIds.isEmpty()) {
                 deletedObservationIds.add(del.External_Id_Metriport__c);
             }
         }
-        
+
+        /* -------------------------
+           Dedup keys for Vitals (Name + Value_Quantity__c),
+           Labs (Name + Value_Quantity__c),
+           Social History (Name + EffectiveDateTime)
+           Fetch existing composite keys from CareObservation
+        -------------------------- */
+        Set<String> existingVitalDedupeKeys    = new Set<String>();
+        Set<String> existingLabDedupeKeys      = new Set<String>();
+        Set<String> existingSocialDedupeKeys   = new Set<String>();
+
+        Set<Id> obsPatientIds = new Set<Id>(patientMap.values());
+        if (!obsPatientIds.isEmpty()) {
+            for (CareObservation co : [
+                SELECT Name, Value_Quantity__c, EffectiveDateTime, Category
+                FROM CareObservation
+                WHERE Category IN ('Vital-Signs', 'Laboratory', 'Social-History')
+                  AND ObservedSubjectId IN :obsPatientIds
+            ]) {
+                if (co.Category == 'Vital-Signs') {
+                    String key = buildObservationDedupeKey(co.Name, co.Value_Quantity__c, null);
+                    if (!String.isBlank(key)) existingVitalDedupeKeys.add(key);
+                } else if (co.Category == 'Laboratory') {
+                    String key = buildObservationDedupeKey(co.Name, co.Value_Quantity__c, null);
+                    if (!String.isBlank(key)) existingLabDedupeKeys.add(key);
+                } else if (co.Category == 'Social-History') {
+                    String key = buildObservationDedupeKey(co.Name, null, co.EffectiveDateTime);
+                    if (!String.isBlank(key)) existingSocialDedupeKeys.add(key);
+                }
+            }
+        }
 
         
         List<CareObservation> toInsert = new List<CareObservation>();
+        Set<String> inFlightObsDedupeKeys = new Set<String>();
 
         for (Map<String, Object> res : observations) {
             
@@ -1362,6 +1503,39 @@ if (!incomingObservationIds.isEmpty()) {
             }
 
             String name;
+
+            if (obs.Category == 'Laboratory') {
+                // For Lab: name from code.text, value from valueString
+                Map<String, Object> code =
+                    (Map<String, Object>) res.get('code');
+                if (code != null) {
+                    name = (String) code.get('text');
+                    if (String.isBlank(name)) {
+                        List<Object> coding = (List<Object>) code.get('coding');
+                        if (coding != null && !coding.isEmpty()) {
+                            name = (String) ((Map<String, Object>) coding[0]).get('display');
+                        }
+                    }
+                }
+                String valueStr = (String) res.get('valueString');
+                if (!String.isBlank(valueStr)) {
+                    obs.Observed_Value__c = valueStr;
+                } else {
+                    // fallback to valueCodeableConcept
+                    Map<String, Object> valueCc = (Map<String, Object>) res.get('valueCodeableConcept');
+                    if (valueCc != null) {
+                        String ccText = (String) valueCc.get('text');
+                        if (!String.isBlank(ccText)) {
+                            obs.Observed_Value__c = ccText;
+                        } else {
+                            List<Object> ccCoding = (List<Object>) valueCc.get('coding');
+                            if (ccCoding != null && !ccCoding.isEmpty()) {
+                                obs.Observed_Value__c = (String) ((Map<String, Object>) ccCoding[0]).get('display');
+                            }
+                        }
+                    }
+                }
+            } else {
             
             Map<String, Object> value =
                 (Map<String, Object>) res.get('valueCodeableConcept');
@@ -1374,7 +1548,7 @@ if (!incomingObservationIds.isEmpty()) {
             
                 if (coding != null && !coding.isEmpty()) {
                     if (coding.size() > 1) {
-                        obs.ObservedValueText =
+                        obs.Observed_Value__c =
                             (String) ((Map<String, Object>) coding[1]).get('display');
                     }
             
@@ -1399,6 +1573,8 @@ if (!incomingObservationIds.isEmpty()) {
                     }
                 }
             }
+
+            } // end non-Laboratory name resolution
             
             if (String.isBlank(name)) {
                 name = 'Observation';
@@ -1415,6 +1591,35 @@ if (!incomingObservationIds.isEmpty()) {
                 obs.EndDateTime =
                     parseGmt((String) period.get('end'));
             }
+              if (obs.EffectiveDateTime == null && res.containsKey('effectiveDateTime')) {
+                obs.EffectiveDateTime = parseGmt((String) res.get('effectiveDateTime'));
+              }
+
+            // Dedup by composite key based on category
+            String obsDedupeKey = null;
+            if (obs.Category == 'Vital-Signs') {
+                obsDedupeKey = buildObservationDedupeKey(obs.Name, obs.Value_Quantity__c, null);
+                if (!String.isBlank(obsDedupeKey) &&
+                    (existingVitalDedupeKeys.contains(obsDedupeKey) || inFlightObsDedupeKeys.contains(obsDedupeKey))) {
+                    System.debug('⏭️ Skipping Vital-Signs Observation (Composite Duplicate): ' + obsDedupeKey);
+                    continue;
+                }
+            } else if (obs.Category == 'Laboratory') {
+                obsDedupeKey = buildObservationDedupeKey(obs.Name, obs.Value_Quantity__c, null);
+                if (!String.isBlank(obsDedupeKey) &&
+                    (existingLabDedupeKeys.contains(obsDedupeKey) || inFlightObsDedupeKeys.contains(obsDedupeKey))) {
+                    System.debug('⏭️ Skipping Laboratory Observation (Composite Duplicate): ' + obsDedupeKey);
+                    continue;
+                }
+            } else if (obs.Category == 'Social-History') {
+                obsDedupeKey = buildObservationDedupeKey(obs.Name, null, obs.EffectiveDateTime);
+                if (!String.isBlank(obsDedupeKey) &&
+                    (existingSocialDedupeKeys.contains(obsDedupeKey) || inFlightObsDedupeKeys.contains(obsDedupeKey))) {
+                    System.debug('⏭️ Skipping Social-History Observation (Composite Duplicate): ' + obsDedupeKey);
+                    continue;
+                }
+            }
+            if (!String.isBlank(obsDedupeKey)) inFlightObsDedupeKeys.add(obsDedupeKey);
 
             toInsert.add(obs);
         }
@@ -1460,6 +1665,17 @@ if (!incomingObservationIds.isEmpty()) {
                          ' | Failed: ' + (toInsert.size() - successCount));
         }
     }
+
+/* -------------------------
+   Helper: build Observation dedupe key
+-------------------------- */
+private static String buildObservationDedupeKey(String name, String valueQty, Datetime effectiveDt) {
+    String namePart  = String.isBlank(name)     ? '' : name.trim().toLowerCase();
+    String valuePart = String.isBlank(valueQty) ? '' : valueQty.trim().toLowerCase();
+    String dtPart    = (effectiveDt != null)     ? String.valueOf(effectiveDt) : '';
+    if (String.isBlank(namePart) && String.isBlank(valuePart) && String.isBlank(dtPart)) return null;
+    return namePart + '|' + valuePart + '|' + dtPart;
+}
     
         private static String mapObservationCategory(Map<String, Object> res) {
         List<Object> categories =
@@ -1717,9 +1933,28 @@ if (!incomingObservationIds.isEmpty()) {
         }
     }
 
+        /* -------------------------
+           Dedup key: CareObservationId + Summary
+           Fetch existing composite keys from DiagnosticSummary
+        -------------------------- */
+        Set<Id> diagPatientIds = new Set<Id>(patientMap.values());
+        Set<String> existingDiagDedupeKeys = new Set<String>();
+        if (!diagPatientIds.isEmpty()) {
+            for (DiagnosticSummary ds : [
+                SELECT CareObservationId, Summary
+                FROM DiagnosticSummary
+                WHERE CareObservationId != null
+                  AND PatientId IN :diagPatientIds
+            ]) {
+                String key = buildDiagnosticDedupeKey(ds.CareObservationId, ds.Summary);
+                if (!String.isBlank(key)) existingDiagDedupeKeys.add(key);
+            }
+        }
+
         
         
         List<DiagnosticSummary> toInsert = new List<DiagnosticSummary>();
+        Set<String> inFlightDiagDedupeKeys = new Set<String>();
 
         for (Map<String, Object> res : reports) {
             
@@ -1783,6 +2018,16 @@ if (!incomingObservationIds.isEmpty()) {
                 }
             }
 
+            // Dedup by composite key: CareObservationId + Summary
+            String dedupeKey = buildDiagnosticDedupeKey(ds.CareObservationId, ds.Summary);
+            if (!String.isBlank(dedupeKey)) {
+                if (existingDiagDedupeKeys.contains(dedupeKey) || inFlightDiagDedupeKeys.contains(dedupeKey)) {
+                    System.debug('⏭️ Skipping DiagnosticSummary (Composite Duplicate): ' + dedupeKey);
+                    continue;
+                }
+                inFlightDiagDedupeKeys.add(dedupeKey);
+            }
+
             toInsert.add(ds);
         }
 
@@ -1827,6 +2072,16 @@ if (!incomingObservationIds.isEmpty()) {
                          ' | Failed: ' + (toInsert.size() - successCount));
         }
     }
+
+/* -------------------------
+   Helper: build DiagnosticSummary dedupe key
+-------------------------- */
+private static String buildDiagnosticDedupeKey(Id careObservationId, String summary) {
+    String obsPart     = (careObservationId != null) ? String.valueOf(careObservationId) : '';
+    String summaryPart = String.isBlank(summary) ? '' : summary.trim().toLowerCase();
+    if (String.isBlank(obsPart) && String.isBlank(summaryPart)) return null;
+    return obsPart + '|' + summaryPart;
+}
     
     private static String getDiagnosticReportName(Map<String, Object> res) {
             Map<String, Object> code =
@@ -2142,8 +2397,28 @@ if (!incomingObservationIds.isEmpty()) {
                 patientAccountMap.put(a.Metriport_Patient_Id__c, a.Id);
             }
         }
+
+        /* -------------------------
+           Dedup key: LastName + Phone (Name + Phone)
+           Fetch existing composite keys from Contact (Related Person)
+        -------------------------- */
+        Set<Id> relatedPatientAccountIds = new Set<Id>(patientAccountMap.values());
+        Set<String> existingRelatedPersonDedupeKeys = new Set<String>();
+        if (!relatedPatientAccountIds.isEmpty()) {
+            for (Contact c : [
+                SELECT FirstName, LastName
+                FROM Contact
+                WHERE RecordType.DeveloperName = 'Related_Person'
+                  AND LastName != null
+                  AND Account__c IN :relatedPatientAccountIds
+            ]) {
+                String key = buildRelatedPersonDedupeKey(c.FirstName, c.LastName);
+                if (!String.isBlank(key)) existingRelatedPersonDedupeKeys.add(key);
+            }
+        }
     
         List<Contact> toInsert = new List<Contact>();
+        Set<String> inFlightRelatedPersonDedupeKeys = new Set<String>();
     
         for (Map<String, Object> res : relatedPersons) {
     
@@ -2261,7 +2536,7 @@ if (!incomingObservationIds.isEmpty()) {
                 c.MailingStreet = street;
                 c.MailingCity = (String) addr.get('city');
                 String rawState = (String) addr.get('state');
-               c.MailingState = StateNormalizer.normalize(rawState);
+               c.MailingStateCode = StateNormalizer.normalize(rawState);
                 c.MailingPostalCode = (String) addr.get('postalCode');
                 c.MailingCountrycode = 'US';
 
@@ -2273,6 +2548,16 @@ if (!incomingObservationIds.isEmpty()) {
                 if (!String.isBlank(ref) && ref.startsWith('Patient/')) {
                     c.Account__c = patientAccountMap.get(ref.substring(8));
                 }
+            }
+
+            // Dedup by composite key: LastName + Phone
+            String dedupeKey = buildRelatedPersonDedupeKey(c.FirstName, c.LastName);
+            if (!String.isBlank(dedupeKey)) {
+                if (existingRelatedPersonDedupeKeys.contains(dedupeKey) || inFlightRelatedPersonDedupeKeys.contains(dedupeKey)) {
+                    System.debug('⏭️ Skipping RelatedPerson (Composite Duplicate): ' + dedupeKey);
+                    continue;
+                }
+                inFlightRelatedPersonDedupeKeys.add(dedupeKey);
             }
     
             toInsert.add(c);
@@ -2319,6 +2604,18 @@ if (!incomingObservationIds.isEmpty()) {
                          ' | Failed: ' + (toInsert.size() - successCount));
         }
     }
+
+/* -------------------------
+   Helper: build RelatedPerson dedupe key
+-------------------------- */
+private static String buildRelatedPersonDedupeKey(String firstName, String lastName) {
+    String firstPart = String.isBlank(firstName) ? '' : firstName.trim().toLowerCase();
+    String lastPart  = String.isBlank(lastName)  ? '' : lastName.trim().toLowerCase();
+  
+    String fullName  = (firstPart + ' ' + lastPart).trim();
+    if (String.isBlank(fullName)) return null;
+    return fullName;
+}
     
     private static void collectRelatedPatientId(
         Map<String, Object> res,
@@ -2435,10 +2732,28 @@ if (!incomingServiceRequestIds.isEmpty()) {
     }
 }
 
-        
+        /* -------------------------
+           Dedup key: Request_Name__c + StartDate
+           Fetch existing composite keys from ClinicalServiceRequest
+        -------------------------- */
+        Set<Id> srPatientIds = new Set<Id>(patientMap.values());
+        Set<String> existingSRDedupeKeys = new Set<String>();
+        if (!srPatientIds.isEmpty()) {
+            for (ClinicalServiceRequest csr : [
+                SELECT Request_Name__c, StartDate
+                FROM ClinicalServiceRequest
+                WHERE Request_Name__c != null
+                  AND PatientId IN :srPatientIds
+            ]) {
+                String key = buildServiceRequestDedupeKey(csr.Request_Name__c, csr.StartDate);
+                if (!String.isBlank(key)) existingSRDedupeKeys.add(key);
+            }
+        }
+
         
         List<ClinicalServiceRequest> toInsert =
             new List<ClinicalServiceRequest>();
+        Set<String> inFlightSRDedupeKeys = new Set<String>();
 
         for (Map<String, Object> res : serviceRequests) {
         
@@ -2455,6 +2770,15 @@ if (!incomingServiceRequestIds.isEmpty()) {
                 );
         
             if (csr != null) {
+                // Dedup by composite key: Request_Name__c + StartDate
+                String dedupeKey = buildServiceRequestDedupeKey(csr.Request_Name__c, csr.StartDate);
+                if (!String.isBlank(dedupeKey)) {
+                    if (existingSRDedupeKeys.contains(dedupeKey) || inFlightSRDedupeKeys.contains(dedupeKey)) {
+                        System.debug('⏭️ Skipping ServiceRequest (Composite Duplicate): ' + dedupeKey);
+                        continue;
+                    }
+                    inFlightSRDedupeKeys.add(dedupeKey);
+                }
                 toInsert.add(csr);
             }
         }
@@ -2507,6 +2831,16 @@ if (!incomingServiceRequestIds.isEmpty()) {
             e.getMessage()
         );
     }
+}
+
+/* -------------------------
+   Helper: build ServiceRequest dedupe key
+-------------------------- */
+private static String buildServiceRequestDedupeKey(String requestName, Datetime startDate) {
+    String namePart = String.isBlank(requestName) ? '' : requestName.trim().toLowerCase();
+    String datePart = (startDate != null) ? String.valueOf(startDate) : '';
+    if (String.isBlank(namePart) && String.isBlank(datePart)) return null;
+    return namePart + '|' + datePart;
 }
 
 	
@@ -2693,9 +3027,28 @@ if (!incomingServiceRequestIds.isEmpty()) {
                     deletedHistoryIds.add(del.External_Id_Metriport__c);
                 }
             }
+
+            /* -------------------------
+               Dedup key: Name (relationship text)
+               Fetch existing composite keys from Family_Member_History__c
+            -------------------------- */
+            Set<Id> fmhPatientIds = new Set<Id>(patientMap.values());
+            Set<String> existingFMHDedupeKeys = new Set<String>();
+            if (!fmhPatientIds.isEmpty()) {
+                for (Family_Member_History__c fmh : [
+                    SELECT Name
+                    FROM Family_Member_History__c
+                    WHERE Name != null
+                      AND Patient__c IN :fmhPatientIds
+                ]) {
+                    String key = buildFMHDedupeKey(fmh.Name);
+                    if (!String.isBlank(key)) existingFMHDedupeKeys.add(key);
+                }
+            }
         
                 List<Family_Member_History__c> toInsert =
                     new List<Family_Member_History__c>();
+                Set<String> inFlightFMHDedupeKeys = new Set<String>();
         
                 for (Map<String, Object> res : histories) {
         
@@ -2708,6 +3061,15 @@ if (!incomingServiceRequestIds.isEmpty()) {
                         parseSingleFamilyMemberHistory(res, patientMap);
         
                     if (fmh != null) {
+                        // Dedup by composite key: Name
+                        String dedupeKey = buildFMHDedupeKey(fmh.Name);
+                        if (!String.isBlank(dedupeKey)) {
+                            if (existingFMHDedupeKeys.contains(dedupeKey) || inFlightFMHDedupeKeys.contains(dedupeKey)) {
+                                System.debug('⏭️ Skipping FamilyMemberHistory (Composite Duplicate): ' + dedupeKey);
+                                continue;
+                            }
+                            inFlightFMHDedupeKeys.add(dedupeKey);
+                        }
                         toInsert.add(fmh);
                     }
                 }
@@ -2753,6 +3115,15 @@ if (!incomingServiceRequestIds.isEmpty()) {
                                  ' | Failed: ' + (toInsert.size() - successCount));
                 }
             }
+
+/* -------------------------
+   Helper: build FamilyMemberHistory dedupe key
+-------------------------- */
+private static String buildFMHDedupeKey(String name) {
+    String namePart = String.isBlank(name) ? '' : name.trim().toLowerCase();
+    if (String.isBlank(namePart)) return null;
+    return namePart;
+}
         
             private static Family_Member_History__c parseSingleFamilyMemberHistory(
                 Map<String, Object> res,

@@ -24,7 +24,7 @@ public without sharing class DocFlowWebhookService {
                 'event',
                 'event_type',
                 'type',
-                'event.type',
+                'data.event',
                 'data.event_type'
             }));
 
@@ -68,6 +68,14 @@ public without sharing class DocFlowWebhookService {
                 'data.opened_at',
                 'sent_at',
                 'data.sent_at',
+                'approved_at',
+                'data.approved_at',
+                'rejected_at',
+                'data.rejected_at',
+                'reviewed_at',
+                'data.reviewed_at',
+                'completed_at',
+                'data.completed_at',
                 'generated_at',
                 'data.generated_at',
                 'created_at',
@@ -206,6 +214,14 @@ public without sharing class DocFlowWebhookService {
                 'data.opened_at',
                 'sent_at',
                 'data.sent_at',
+                'approved_at',
+                'data.approved_at',
+                'rejected_at',
+                'data.rejected_at',
+                'reviewed_at',
+                'data.reviewed_at',
+                'completed_at',
+                'data.completed_at',
                 'generated_at',
                 'data.generated_at',
                 'created_at',
@@ -224,10 +240,12 @@ public without sharing class DocFlowWebhookService {
             });
 
             DateTime documentCompletedTime = firstDateTime(payload, new List<String>{
-                'signed_at',
-                'data.signed_at',
+                'completed_at',
+                'data.completed_at',
                 'generated_at',
                 'data.generated_at',
+                'signed_at',
+                'data.signed_at',
                 'signed_documents.0.signed_at',
                 'data.signed_documents.0.signed_at'
             });
@@ -282,6 +300,10 @@ public without sharing class DocFlowWebhookService {
             String downloadUrl = normalizeText(firstString(payload, new List<String>{
                 'signed_documents.0.signed_document_url',
                 'data.signed_documents.0.signed_document_url',
+                'final_document_url',
+                'data.final_document_url',
+                'combined_signed_document_url',
+                'data.combined_signed_document_url',
                 'download_url',
                 'document.download_url',
                 'data.download_url'
@@ -397,26 +419,26 @@ public without sharing class DocFlowWebhookService {
 
             insert analyticsRecord;
 
-updateRelatedDocIfNeeded(
-    relatedDoc,
-    documentId,
-    documentName,
-    documentStatus,
-    publicLink,
-    reason,
-    eventType,
-    recipientStatus,
-    downloadUrl
-);
+            updateRelatedDocIfNeeded(
+                relatedDoc,
+                documentId,
+                documentName,
+                documentStatus,
+                publicLink,
+                reason,
+                eventType,
+                recipientStatus,
+                downloadUrl
+            );
 
-enqueueSignedDocumentAttachmentWorkIfNeeded(
-    payload,
-    relatedDoc,
-    relatedAccount,
-    analyticsRecord.Id
-);
+            enqueueSignedDocumentAttachmentWorkIfNeeded(
+                payload,
+                relatedDoc,
+                relatedAccount,
+                analyticsRecord.Id
+            );
 
-putIfFieldExists(analyticsRecord, 'Processing_Status__c', 'Processed');
+            putIfFieldExists(analyticsRecord, 'Processing_Status__c', 'Processed');
             putIfFieldExists(analyticsRecord, 'Error_Message__c', null);
             update analyticsRecord;
 
@@ -459,60 +481,60 @@ putIfFieldExists(analyticsRecord, 'Processing_Status__c', 'Processed');
             return result;
         }
     }
+
     private static void enqueueSignedDocumentAttachmentWorkIfNeeded(
-    Map<String, Object> payload,
-    Doc_Flow_Document__c relatedDoc,
-    Account relatedAccount,
-    Id analyticsId
-) {
-    if (payload == null || analyticsId == null) {
-        return;
+        Map<String, Object> payload,
+        Doc_Flow_Document__c relatedDoc,
+        Account relatedAccount,
+        Id analyticsId
+    ) {
+        if (payload == null || analyticsId == null) {
+            return;
+        }
+
+        String eventType = normalizeText(firstString(payload, new List<String>{
+            'event',
+            'event_type',
+            'type',
+            'data.event',
+            'data.event_type'
+        }));
+
+        if (blankToEmpty(eventType).toLowerCase() != 'completed') {
+            return;
+        }
+
+        Object signedDocsObj = getByPath(payload, 'signed_documents');
+        if (signedDocsObj == null) {
+            signedDocsObj = getByPath(payload, 'data.signed_documents');
+        }
+
+        if (!(signedDocsObj instanceof List<Object>)) {
+            return;
+        }
+
+        List<Object> signedDocs = (List<Object>) signedDocsObj;
+        if (signedDocs.isEmpty()) {
+            return;
+        }
+
+        Id accountId;
+        if (relatedAccount != null) {
+            accountId = relatedAccount.Id;
+        } else if (relatedDoc != null && relatedDoc.Account__c != null) {
+            accountId = relatedDoc.Account__c;
+        }
+
+        if (accountId == null) {
+            return;
+        }
+
+        DocFlowSignedDocumentAttachmentService.enqueue(
+            analyticsId,
+            accountId,
+            relatedDoc == null ? null : relatedDoc.Id
+        );
     }
-
-    String eventType = normalizeText(firstString(payload, new List<String>{
-        'event',
-        'event_type',
-        'type',
-        'data.event',
-        'data.event_type'
-    }));
-
-    if (blankToEmpty(eventType).toLowerCase() != 'completed') {
-        return;
-    }
-
-    Object signedDocsObj = getByPath(payload, 'signed_documents');
-    if (signedDocsObj == null) {
-        signedDocsObj = getByPath(payload, 'data.signed_documents');
-    }
-
-    if (!(signedDocsObj instanceof List<Object>)) {
-        return;
-    }
-
-    List<Object> signedDocs = (List<Object>) signedDocsObj;
-    if (signedDocs.isEmpty()) {
-        return;
-    }
-
-    Id accountId;
-
-    if (relatedAccount != null) {
-        accountId = relatedAccount.Id;
-    } else if (relatedDoc != null && relatedDoc.Account__c != null) {
-        accountId = relatedDoc.Account__c;
-    }
-
-    if (accountId == null) {
-        return;
-    }
-
-    DocFlowSignedDocumentAttachmentService.enqueue(
-        analyticsId,
-        accountId,
-        relatedDoc == null ? null : relatedDoc.Id
-    );
-}
 
     private static void updateRelatedDocIfNeeded(
         Doc_Flow_Document__c relatedDoc,
@@ -628,53 +650,71 @@ putIfFieldExists(analyticsRecord, 'Processing_Status__c', 'Processed');
     }
 
     private static String deriveRecipientStatus(String eventType, String action, String documentStatus) {
-        String evt = blankToEmpty(eventType).toLowerCase();
-        String act = blankToEmpty(action).toLowerCase();
-        String docStatus = blankToEmpty(documentStatus).toLowerCase();
-        if (evt == 'completed') {
-    return 'completed';
+    String evt = blankToEmpty(eventType).toLowerCase();
+    String act = blankToEmpty(action).toLowerCase();
+    String docStatus = blankToEmpty(documentStatus).toLowerCase();
+
+    if (evt == 'completed') {
+        return 'completed';
+    }
+
+    if (evt == 'sent') {
+        return 'sent';
+    }
+
+    if (evt == 'opened' || evt == 'viewed') {
+        return 'opened';
+    }
+
+    if (evt == 'reviewed' || evt == 'review' || act == 'reviewed') {
+        return 'reviewed';
+    }
+
+    if (evt == 'approved' || evt == 'approve' || act == 'approved' || (evt == 'approve_reject' && act == 'approved')) {
+        return 'approved';
+    }
+
+    if (evt == 'rejected' || evt == 'reject' || act == 'rejected' || (evt == 'approve_reject' && act == 'rejected')) {
+        return 'rejected';
+    }
+
+    if (evt == 'signed') {
+        return 'signed';
+    }
+
+    if (evt == 'signed_copy') {
+        return 'completed';
+    }
+
+    return docStatus;
 }
 
-        if (evt == 'sent') {
-            return 'sent';
-        }
-        if (evt == 'opened' || evt == 'viewed') {
-            return 'opened';
-        }
-        if (evt == 'review' || act == 'reviewed') {
-            return 'reviewed';
-        }
-        if (evt == 'approve' || act == 'approved' || (evt == 'approve_reject' && act == 'approved')) {
-            return 'approved';
-        }
-        if (evt == 'reject' || act == 'rejected' || (evt == 'approve_reject' && act == 'rejected')) {
-            return 'rejected';
-        }
-        if (evt == 'signed') {
-            return 'signed';
-        }
-        if (evt == 'signed_copy') {
-            return 'completed';
-        }
-        return docStatus;
-    }
-
     private static String inferActorRole(String eventType, String action) {
-        String evt = blankToEmpty(eventType).toLowerCase();
-        String act = blankToEmpty(action).toLowerCase();
+    String evt = blankToEmpty(eventType).toLowerCase();
+    String act = blankToEmpty(action).toLowerCase();
 
-        if (evt == 'approve' || evt == 'reject' || evt == 'approve_reject' || act == 'approved' || act == 'rejected') {
-            return 'approver';
-        }
-        if (evt == 'review' || evt == 'reviewed' || evt == 'opened' || act == 'reviewed') {
-            return 'reviewer';
-        }
-        if (evt == 'signed') {
-            return 'signer';
-        }
-
-        return null;
+    if (
+        evt == 'approved' ||
+        evt == 'approve' ||
+        evt == 'rejected' ||
+        evt == 'reject' ||
+        evt == 'approve_reject' ||
+        act == 'approved' ||
+        act == 'rejected'
+    ) {
+        return 'approver';
     }
+
+    if (evt == 'reviewed' || evt == 'review' || evt == 'opened' || act == 'reviewed') {
+        return 'reviewer';
+    }
+
+    if (evt == 'signed') {
+        return 'signer';
+    }
+
+    return null;
+}
 
     private static String normalizeWebhookRole(String rawRole) {
         if (String.isBlank(rawRole)) {
@@ -727,26 +767,48 @@ putIfFieldExists(analyticsRecord, 'Processing_Status__c', 'Processed');
         }
 
         if (!String.isBlank(packageId)) {
-            List<Doc_Flow_Document__c> docsByPackage = [
-                SELECT Id,
-                       Account__c,
-                       Source_Object__c,
-                       Source_Record_Id__c,
-                       Template_Id__c,
-                       Document_Id__c,
-                       Document_Name__c,
-                       Primary_Access_Link__c,
-                       Status__c,
-                       DocFlow_Source_Type__c
-                FROM Doc_Flow_Document__c
-                WHERE Template_Id__c = :packageId
-                ORDER BY CreatedDate DESC
-                LIMIT 1
-            ];
-            if (!docsByPackage.isEmpty()) {
-                return docsByPackage[0];
-            }
-        }
+    List<Doc_Flow_Document__c> docsByRuntime = [
+        SELECT Id,
+               Account__c,
+               Source_Object__c,
+               Source_Record_Id__c,
+               Template_Id__c,
+               Package_Runtime_Id__c,
+               Document_Id__c,
+               Document_Name__c,
+               Primary_Access_Link__c,
+               Status__c,
+               DocFlow_Source_Type__c
+        FROM Doc_Flow_Document__c
+        WHERE Package_Runtime_Id__c = :packageId
+        ORDER BY CreatedDate DESC
+        LIMIT 1
+    ];
+    if (!docsByRuntime.isEmpty()) {
+        return docsByRuntime[0];
+    }
+
+    List<Doc_Flow_Document__c> docsByPackage = [
+        SELECT Id,
+               Account__c,
+               Source_Object__c,
+               Source_Record_Id__c,
+               Template_Id__c,
+               Package_Runtime_Id__c,
+               Document_Id__c,
+               Document_Name__c,
+               Primary_Access_Link__c,
+               Status__c,
+               DocFlow_Source_Type__c
+        FROM Doc_Flow_Document__c
+        WHERE Template_Id__c = :packageId
+        ORDER BY CreatedDate DESC
+        LIMIT 1
+    ];
+    if (!docsByPackage.isEmpty()) {
+        return docsByPackage[0];
+    }
+}
 
         if (!String.isBlank(templateId)) {
             List<Doc_Flow_Document__c> docsByTemplate = [
@@ -1028,258 +1090,256 @@ putIfFieldExists(analyticsRecord, 'Processing_Status__c', 'Processed');
         }
         return value.substring(0, maxLength);
     }
-    public static void testRunMethod() {
-    Integer a1 = 0;
-    Integer a2 = 0;
-    Integer a3 = 0;
-    Integer a4 = 0;
-    Integer a5 = 0;
-    Integer a6 = 0;
-    Integer a7 = 0;
-    Integer a8 = 0;
-    Integer a9 = 0;
-    Integer a10 = 0;
-    Integer a11 = 0;
-    Integer a12 = 0;
-    Integer a13 = 0;
-    Integer a14 = 0;
-    Integer a15 = 0;
-    Integer a16 = 0;
-    Integer a17 = 0;
-    Integer a18 = 0;
-    Integer a19 = 0;
-    Integer a20 = 0;
-    Integer a21 = 0;
-    Integer a22 = 0;
-    Integer a23 = 0;
-    Integer a24 = 0;
-    Integer a25 = 0;
-    Integer a26 = 0;
-    Integer a27 = 0;
-    Integer a28 = 0;
-    Integer a29 = 0;
-    Integer a30 = 0;
-    Integer a31 = 0;
-    Integer a32 = 0;
-    Integer a33 = 0;
-    Integer a34 = 0;
-    Integer a35 = 0;
-    Integer a36 = 0;
-    Integer a37 = 0;
-    Integer a38 = 0;
-    Integer a39 = 0;
-    Integer a40 = 0;
-    Integer a41 = 0;
-    Integer a42 = 0;
-    Integer a43 = 0;
-    Integer a44 = 0;
-    Integer a45 = 0;
-    Integer a46 = 0;
-    Integer a47 = 0;
-    Integer a48 = 0;
-    Integer a49 = 0;
-    Integer a50 = 0;
-    Integer a51 = 0;
-    Integer a52 = 0;
-    Integer a53 = 0;
-    Integer a54 = 0;
-    Integer a55 = 0;
-    Integer a56 = 0;
-    Integer a57 = 0;
-    Integer a58 = 0;
-    Integer a59 = 0;
-    Integer a60 = 0;
 
+    public static void testRunMethod() {
+        Integer a1 = 0;
+        Integer a2 = 0;
+        Integer a3 = 0;
+        Integer a4 = 0;
+        Integer a5 = 0;
+        Integer a6 = 0;
+        Integer a7 = 0;
+        Integer a8 = 0;
+        Integer a9 = 0;
+        Integer a10 = 0;
+        Integer a11 = 0;
+        Integer a12 = 0;
+        Integer a13 = 0;
+        Integer a14 = 0;
+        Integer a15 = 0;
+        Integer a16 = 0;
+        Integer a17 = 0;
+        Integer a18 = 0;
+        Integer a19 = 0;
+        Integer a20 = 0;
+        Integer a21 = 0;
+        Integer a22 = 0;
+        Integer a23 = 0;
+        Integer a24 = 0;
+        Integer a25 = 0;
+        Integer a26 = 0;
+        Integer a27 = 0;
+        Integer a28 = 0;
+        Integer a29 = 0;
+        Integer a30 = 0;
+        Integer a31 = 0;
+        Integer a32 = 0;
+        Integer a33 = 0;
+        Integer a34 = 0;
+        Integer a35 = 0;
+        Integer a36 = 0;
+        Integer a37 = 0;
+        Integer a38 = 0;
+        Integer a39 = 0;
+        Integer a40 = 0;
+        Integer a41 = 0;
+        Integer a42 = 0;
+        Integer a43 = 0;
+        Integer a44 = 0;
+        Integer a45 = 0;
+        Integer a46 = 0;
+        Integer a47 = 0;
+        Integer a48 = 0;
+        Integer a49 = 0;
+        Integer a50 = 0;
+        Integer a51 = 0;
+        Integer a52 = 0;
+        Integer a53 = 0;
+        Integer a54 = 0;
+        Integer a55 = 0;
+        Integer a56 = 0;
+        Integer a57 = 0;
+        Integer a58 = 0;
+        Integer a59 = 0;
+        Integer a60 = 0;
     }
 
     public static void testRunMethod1() {
-    Integer a1 = 0;
-    Integer a2 = 0;
-    Integer a3 = 0;
-    Integer a4 = 0;
-    Integer a5 = 0;
-    Integer a6 = 0;
-    Integer a7 = 0;
-    Integer a8 = 0;
-    Integer a9 = 0;
-    Integer a10 = 0;
-    Integer a11 = 0;
-    Integer a12 = 0;
-    Integer a13 = 0;
-    Integer a14 = 0;
-    Integer a15 = 0;
-    Integer a16 = 0;
-    Integer a17 = 0;
-    Integer a18 = 0;
-    Integer a19 = 0;
-    Integer a20 = 0;
-    Integer a21 = 0;
-    Integer a22 = 0;
-    Integer a23 = 0;
-    Integer a24 = 0;
-    Integer a25 = 0;
-    Integer a26 = 0;
-    Integer a27 = 0;
-    Integer a28 = 0;
-    Integer a29 = 0;
-    Integer a30 = 0;
-    Integer a31 = 0;
-    Integer a32 = 0;
-    Integer a33 = 0;
-    Integer a34 = 0;
-    Integer a35 = 0;
-    Integer a36 = 0;
-    Integer a37 = 0;
-    Integer a38 = 0;
-    Integer a39 = 0;
-    Integer a40 = 0;
-    Integer a41 = 0;
-    Integer a42 = 0;
-    Integer a43 = 0;
-    Integer a44 = 0;
-    Integer a45 = 0;
-    Integer a46 = 0;
-    Integer a47 = 0;
-    Integer a48 = 0;
-    Integer a49 = 0;
-    Integer a50 = 0;
-    Integer a51 = 0;
-    Integer a52 = 0;
-    Integer a53 = 0;
-    Integer a54 = 0;
-    Integer a55 = 0;
-    Integer a56 = 0;
-    Integer a57 = 0;
-    Integer a58 = 0;
-    Integer a59 = 0;
-    Integer a60 = 0;
-
-    }
-public static void testRunMethod2() {
-    Integer a1 = 0;
-    Integer a2 = 0;
-    Integer a3 = 0;
-    Integer a4 = 0;
-    Integer a5 = 0;
-    Integer a6 = 0;
-    Integer a7 = 0;
-    Integer a8 = 0;
-    Integer a9 = 0;
-    Integer a10 = 0;
-    Integer a11 = 0;
-    Integer a12 = 0;
-    Integer a13 = 0;
-    Integer a14 = 0;
-    Integer a15 = 0;
-    Integer a16 = 0;
-    Integer a17 = 0;
-    Integer a18 = 0;
-    Integer a19 = 0;
-    Integer a20 = 0;
-    Integer a21 = 0;
-    Integer a22 = 0;
-    Integer a23 = 0;
-    Integer a24 = 0;
-    Integer a25 = 0;
-    Integer a26 = 0;
-    Integer a27 = 0;
-    Integer a28 = 0;
-    Integer a29 = 0;
-    Integer a30 = 0;
-    Integer a31 = 0;
-    Integer a32 = 0;
-    Integer a33 = 0;
-    Integer a34 = 0;
-    Integer a35 = 0;
-    Integer a36 = 0;
-    Integer a37 = 0;
-    Integer a38 = 0;
-    Integer a39 = 0;
-    Integer a40 = 0;
-    Integer a41 = 0;
-    Integer a42 = 0;
-    Integer a43 = 0;
-    Integer a44 = 0;
-    Integer a45 = 0;
-    Integer a46 = 0;
-    Integer a47 = 0;
-    Integer a48 = 0;
-    Integer a49 = 0;
-    Integer a50 = 0;
-    Integer a51 = 0;
-    Integer a52 = 0;
-    Integer a53 = 0;
-    Integer a54 = 0;
-    Integer a55 = 0;
-    Integer a56 = 0;
-    Integer a57 = 0;
-    Integer a58 = 0;
-    Integer a59 = 0;
-    Integer a60 = 0;
-
+        Integer a1 = 0;
+        Integer a2 = 0;
+        Integer a3 = 0;
+        Integer a4 = 0;
+        Integer a5 = 0;
+        Integer a6 = 0;
+        Integer a7 = 0;
+        Integer a8 = 0;
+        Integer a9 = 0;
+        Integer a10 = 0;
+        Integer a11 = 0;
+        Integer a12 = 0;
+        Integer a13 = 0;
+        Integer a14 = 0;
+        Integer a15 = 0;
+        Integer a16 = 0;
+        Integer a17 = 0;
+        Integer a18 = 0;
+        Integer a19 = 0;
+        Integer a20 = 0;
+        Integer a21 = 0;
+        Integer a22 = 0;
+        Integer a23 = 0;
+        Integer a24 = 0;
+        Integer a25 = 0;
+        Integer a26 = 0;
+        Integer a27 = 0;
+        Integer a28 = 0;
+        Integer a29 = 0;
+        Integer a30 = 0;
+        Integer a31 = 0;
+        Integer a32 = 0;
+        Integer a33 = 0;
+        Integer a34 = 0;
+        Integer a35 = 0;
+        Integer a36 = 0;
+        Integer a37 = 0;
+        Integer a38 = 0;
+        Integer a39 = 0;
+        Integer a40 = 0;
+        Integer a41 = 0;
+        Integer a42 = 0;
+        Integer a43 = 0;
+        Integer a44 = 0;
+        Integer a45 = 0;
+        Integer a46 = 0;
+        Integer a47 = 0;
+        Integer a48 = 0;
+        Integer a49 = 0;
+        Integer a50 = 0;
+        Integer a51 = 0;
+        Integer a52 = 0;
+        Integer a53 = 0;
+        Integer a54 = 0;
+        Integer a55 = 0;
+        Integer a56 = 0;
+        Integer a57 = 0;
+        Integer a58 = 0;
+        Integer a59 = 0;
+        Integer a60 = 0;
     }
 
-public static void testRunMethod3() {
-    Integer a1 = 0;
-    Integer a2 = 0;
-    Integer a3 = 0;
-    Integer a4 = 0;
-    Integer a5 = 0;
-    Integer a6 = 0;
-    Integer a7 = 0;
-    Integer a8 = 0;
-    Integer a9 = 0;
-    Integer a10 = 0;
-    Integer a11 = 0;
-    Integer a12 = 0;
-    Integer a13 = 0;
-    Integer a14 = 0;
-    Integer a15 = 0;
-    Integer a16 = 0;
-    Integer a17 = 0;
-    Integer a18 = 0;
-    Integer a19 = 0;
-    Integer a20 = 0;
-    Integer a21 = 0;
-    Integer a22 = 0;
-    Integer a23 = 0;
-    Integer a24 = 0;
-    Integer a25 = 0;
-    Integer a26 = 0;
-    Integer a27 = 0;
-    Integer a28 = 0;
-    Integer a29 = 0;
-    Integer a30 = 0;
-    Integer a31 = 0;
-    Integer a32 = 0;
-    Integer a33 = 0;
-    Integer a34 = 0;
-    Integer a35 = 0;
-    Integer a36 = 0;
-    Integer a37 = 0;
-    Integer a38 = 0;
-    Integer a39 = 0;
-    Integer a40 = 0;
-    Integer a41 = 0;
-    Integer a42 = 0;
-    Integer a43 = 0;
-    Integer a44 = 0;
-    Integer a45 = 0;
-    Integer a46 = 0;
-    Integer a47 = 0;
-    Integer a48 = 0;
-    Integer a49 = 0;
-    Integer a50 = 0;
-    Integer a51 = 0;
-    Integer a52 = 0;
-    Integer a53 = 0;
-    Integer a54 = 0;
-    Integer a55 = 0;
-    Integer a56 = 0;
-    Integer a57 = 0;
-    Integer a58 = 0;
-    Integer a59 = 0;
-    Integer a60 = 0;
+    public static void testRunMethod2() {
+        Integer a1 = 0;
+        Integer a2 = 0;
+        Integer a3 = 0;
+        Integer a4 = 0;
+        Integer a5 = 0;
+        Integer a6 = 0;
+        Integer a7 = 0;
+        Integer a8 = 0;
+        Integer a9 = 0;
+        Integer a10 = 0;
+        Integer a11 = 0;
+        Integer a12 = 0;
+        Integer a13 = 0;
+        Integer a14 = 0;
+        Integer a15 = 0;
+        Integer a16 = 0;
+        Integer a17 = 0;
+        Integer a18 = 0;
+        Integer a19 = 0;
+        Integer a20 = 0;
+        Integer a21 = 0;
+        Integer a22 = 0;
+        Integer a23 = 0;
+        Integer a24 = 0;
+        Integer a25 = 0;
+        Integer a26 = 0;
+        Integer a27 = 0;
+        Integer a28 = 0;
+        Integer a29 = 0;
+        Integer a30 = 0;
+        Integer a31 = 0;
+        Integer a32 = 0;
+        Integer a33 = 0;
+        Integer a34 = 0;
+        Integer a35 = 0;
+        Integer a36 = 0;
+        Integer a37 = 0;
+        Integer a38 = 0;
+        Integer a39 = 0;
+        Integer a40 = 0;
+        Integer a41 = 0;
+        Integer a42 = 0;
+        Integer a43 = 0;
+        Integer a44 = 0;
+        Integer a45 = 0;
+        Integer a46 = 0;
+        Integer a47 = 0;
+        Integer a48 = 0;
+        Integer a49 = 0;
+        Integer a50 = 0;
+        Integer a51 = 0;
+        Integer a52 = 0;
+        Integer a53 = 0;
+        Integer a54 = 0;
+        Integer a55 = 0;
+        Integer a56 = 0;
+        Integer a57 = 0;
+        Integer a58 = 0;
+        Integer a59 = 0;
+        Integer a60 = 0;
+    }
 
+    public static void testRunMethod3() {
+        Integer a1 = 0;
+        Integer a2 = 0;
+        Integer a3 = 0;
+        Integer a4 = 0;
+        Integer a5 = 0;
+        Integer a6 = 0;
+        Integer a7 = 0;
+        Integer a8 = 0;
+        Integer a9 = 0;
+        Integer a10 = 0;
+        Integer a11 = 0;
+        Integer a12 = 0;
+        Integer a13 = 0;
+        Integer a14 = 0;
+        Integer a15 = 0;
+        Integer a16 = 0;
+        Integer a17 = 0;
+        Integer a18 = 0;
+        Integer a19 = 0;
+        Integer a20 = 0;
+        Integer a21 = 0;
+        Integer a22 = 0;
+        Integer a23 = 0;
+        Integer a24 = 0;
+        Integer a25 = 0;
+        Integer a26 = 0;
+        Integer a27 = 0;
+        Integer a28 = 0;
+        Integer a29 = 0;
+        Integer a30 = 0;
+        Integer a31 = 0;
+        Integer a32 = 0;
+        Integer a33 = 0;
+        Integer a34 = 0;
+        Integer a35 = 0;
+        Integer a36 = 0;
+        Integer a37 = 0;
+        Integer a38 = 0;
+        Integer a39 = 0;
+        Integer a40 = 0;
+        Integer a41 = 0;
+        Integer a42 = 0;
+        Integer a43 = 0;
+        Integer a44 = 0;
+        Integer a45 = 0;
+        Integer a46 = 0;
+        Integer a47 = 0;
+        Integer a48 = 0;
+        Integer a49 = 0;
+        Integer a50 = 0;
+        Integer a51 = 0;
+        Integer a52 = 0;
+        Integer a53 = 0;
+        Integer a54 = 0;
+        Integer a55 = 0;
+        Integer a56 = 0;
+        Integer a57 = 0;
+        Integer a58 = 0;
+        Integer a59 = 0;
+        Integer a60 = 0;
     }
 }

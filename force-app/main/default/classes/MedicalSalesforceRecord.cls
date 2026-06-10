@@ -1,5 +1,5 @@
 public class MedicalSalesforceRecord {   
-public static void sendPatientDataToThirdParty(Set<Id> accountIds, String operation, String objectType, Set<Id> changedRecordIds) {
+    public static void sendPatientDataToThirdParty(Set<Id> accountIds, String operation, String objectType, Set<Id> changedRecordIds) {
         if(accountIds == null || accountIds.isEmpty()) {
             System.debug('No account IDs provided');
             return;
@@ -153,11 +153,11 @@ public static void sendPatientDataToThirdParty(Set<Id> accountIds, String operat
                 return payload;
             }            
             Account personAccount = accounts[0];
-             payload.put('accountId', String.valueOf(personAccount.Id));            
+            payload.put('accountId', String.valueOf(personAccount.Id));            
             if(personAccount.PersonContactId != null) {
                 payload.put('contactId', String.valueOf((Id)personAccount.PersonContactId));
             }
-
+            
             if(objectType == 'Account') {
                 payload.put('basic_details', getBasicDetails(accountId, changedRecordIds));
             }
@@ -177,7 +177,13 @@ public static void sendPatientDataToThirdParty(Set<Id> accountIds, String operat
                 payload.put('healthcare_facilities', getHealthcareFacilities(accountId, changedRecordIds));
             } else if(objectType == 'HealthcarePractitionerFacility') {
                 payload.put('healthcare_professionals', getHealthcareProfessionals(accountId, changedRecordIds));
-            } else {
+            } else if(objectType == 'CareObservation') {
+                payload.put('labs', getLabs(accountId, changedRecordIds));
+            }
+            else if(objectType == 'PatientImmunization') {
+                payload.put('immunization', getImmunizations(accountId, changedRecordIds));
+            }
+            else {
                 System.debug(LoggingLevel.WARN, 'Unknown object type: ' + objectType);
             }
         } catch(Exception ex) {
@@ -185,42 +191,42 @@ public static void sendPatientDataToThirdParty(Set<Id> accountIds, String operat
         }        
         return payload;
     }
-
-
-public static List<Map<String, Object>> getBasicDetails(Id accountId, Set<Id> recordIds) {
-    List<Map<String, Object>> basicDetails = new List<Map<String, Object>>();
-    try {
-        List<Account> accounts = [
-            SELECT Id, Height_in_inches__pc,PersonContactId,Weight_in_pounds__pc, Patient_Summary__c,Last_Refresh_Date__c
-            FROM Account
-            WHERE Id = :accountId AND IsPersonAccount = true AND Id IN :recordIds
-            LIMIT 1];
-
-        if (accounts.isEmpty()) return basicDetails;
-
-        Account a = accounts[0];
-        Map<String, Object> data = new Map<String, Object>();
-        data.put('id', a.Id != null ? String.valueOf(a.Id) : null);
-        data.put('accountId', a.Id != null ? String.valueOf(a.Id) : null);
-        data.put('contactId', a.PersonContactId != null ? String.valueOf(a.PersonContactId) : null);
-        data.put('height', a.Height_in_inches__pc != null ? String.valueOf(a.Height_in_inches__pc) : null);
-        data.put('weight', a.Weight_in_pounds__pc != null ? String.valueOf(a.Weight_in_pounds__pc) : null);
-        data.put('summary', a.Patient_Summary__c != null ? a.Patient_Summary__c : '');
-        basicDetails.add(data);
-
-    } catch (Exception ex) {
-        System.debug(LoggingLevel.ERROR, 'Error getting basic details: ' + ex.getMessage());
+    
+    
+    public static List<Map<String, Object>> getBasicDetails(Id accountId, Set<Id> recordIds) {
+        List<Map<String, Object>> basicDetails = new List<Map<String, Object>>();
+        try {
+            List<Account> accounts = [
+                SELECT Id, Height_in_inches__pc,PersonContactId,Weight_in_pounds__pc, Patient_Summary__c,Last_Refresh_Date__c
+                FROM Account
+                WHERE Id = :accountId AND IsPersonAccount = true AND Id IN :recordIds
+                LIMIT 1];
+            
+            if (accounts.isEmpty()) return basicDetails;
+            
+            Account a = accounts[0];
+            Map<String, Object> data = new Map<String, Object>();
+            data.put('id', a.Id != null ? String.valueOf(a.Id) : null);
+            data.put('accountId', a.Id != null ? String.valueOf(a.Id) : null);
+            data.put('contactId', a.PersonContactId != null ? String.valueOf(a.PersonContactId) : null);
+            data.put('height', a.Height_in_inches__pc != null ? String.valueOf(a.Height_in_inches__pc) : null);
+            data.put('weight', a.Weight_in_pounds__pc != null ? String.valueOf(a.Weight_in_pounds__pc) : null);
+            data.put('summary', a.Patient_Summary__c != null ? a.Patient_Summary__c : '');
+            basicDetails.add(data);
+            
+        } catch (Exception ex) {
+            System.debug(LoggingLevel.ERROR, 'Error getting basic details: ' + ex.getMessage());
+        }
+        return basicDetails;
     }
-    return basicDetails;
-}
-
+    
     @TestVisible
     private static List<Map<String, Object>> getAllergies(Id accountId, Set<Id> recordIds) {
         List<Map<String, Object>> allergies = new List<Map<String, Object>>();
         try {
             List<AllergyIntolerance> records = [
                 SELECT Id, Name, CreatedDate, LastModifiedDate, Generic__c, Severity,Combine_allergy_and_Generic__c, OnsetStartDateTime, 
-                       Allergy_Name__c, Reaction__c, Status, Type, Note__c, PatientId
+                Allergy_Name__c, Reaction__c, Status, Type, Note__c, PatientId
                 FROM AllergyIntolerance
                 WHERE PatientId = :accountId AND Id IN :recordIds
                 ORDER BY OnsetStartDateTime DESC NULLS LAST, CreatedDate DESC];            
@@ -243,12 +249,12 @@ public static List<Map<String, Object>> getBasicDetails(Id accountId, Set<Id> re
     }      
     
     @TestVisible
-       private static List<Map<String, Object>> getMedications(Id accountId, Set<Id> recordIds) {
+    private static List<Map<String, Object>> getMedications(Id accountId, Set<Id> recordIds) {
         List<Map<String, Object>> medications = new List<Map<String, Object>>();
         try {
             List<MedicationStatement> records = [
                 SELECT Id, Name, MedicationId, Dose__c, PatientId, Frequency__c, Reason__c, 
-                       StartDateTime, EndDateTime, Status, Comments__c, Medication.Name, CreatedDate, LastModifiedDate
+                StartDateTime, EndDateTime, Status, Comments__c, Medication.Name, CreatedDate, LastModifiedDate
                 FROM MedicationStatement
                 WHERE PatientId = :accountId AND Id IN :recordIds
                 ORDER BY CreatedDate DESC
@@ -281,7 +287,7 @@ public static List<Map<String, Object>> getBasicDetails(Id accountId, Set<Id> re
         try {
             List<HealthCondition> records = [
                 SELECT Id, Name, CreatedDate, LastModifiedDate, OnsetStartDateTime, OnsetEndDateTime, 
-                       ConditionStatus, Type, Severity, ProblemName, ProblemDescription, PatientId
+                ConditionStatus, Type, Severity, ProblemName, ProblemDescription, PatientId
                 FROM HealthCondition
                 WHERE PatientId = :accountId AND Id IN :recordIds
                 ORDER BY OnsetStartDateTime DESC NULLS LAST, CreatedDate DESC];         
@@ -308,7 +314,7 @@ public static List<Map<String, Object>> getBasicDetails(Id accountId, Set<Id> re
         try {
             List<HealthCareProcedure> records = [
                 SELECT Id, Name, CreatedDate, LastModifiedDate, CodeShortDescription, CodeDescription, 
-                       EffectiveDate, EndDate, Surgery_Name__c, Patient__c
+                EffectiveDate, EndDate, Surgery_Name__c, Patient__c
                 FROM HealthCareProcedure
                 WHERE Patient__c = :accountId AND Id IN :recordIds
                 ORDER BY EffectiveDate DESC NULLS LAST, CreatedDate DESC
@@ -317,7 +323,7 @@ public static List<Map<String, Object>> getBasicDetails(Id accountId, Set<Id> re
                 Map<String, Object> data = new Map<String, Object>();
                 data.put('id', record.Id != null ? record.Id : '');
                 data.put('name', String.isNotBlank(record.Surgery_Name__c) ? record.Surgery_Name__c : (String.isNotBlank(record.Name)
-            ? record.Name : ''));
+                                                                                                       ? record.Name : ''));
                 data.put('surgeryDate', record.EffectiveDate != null ? formatDateTime(record.EffectiveDate) : null);
                 data.put('note', record.CodeDescription != null ? record.CodeDescription : '');
                 data.put('patientId', record.Patient__c != null ? record.Patient__c : '');
@@ -334,9 +340,9 @@ public static List<Map<String, Object>> getBasicDetails(Id accountId, Set<Id> re
         try {
             List<MemberPlan> records = [
                 SELECT Id, Name, medicalcoverage__Payer_Name__c, GroupNumber, MemberNumber, 
-                       medicalcoverage__Subscriber_First_Name__c, medicalcoverage__Subscriber_Last_Name__c, 
-                       medicalcoverage__Subscriber_Birth_Date__c, RelationshipToSubscriber, PrimarySecondaryTertiary, 
-                       OwnerId, CreatedDate, CreatedById, LastModifiedDate, LastModifiedById
+                medicalcoverage__Subscriber_First_Name__c, medicalcoverage__Subscriber_Last_Name__c, 
+                medicalcoverage__Subscriber_Birth_Date__c, RelationshipToSubscriber, PrimarySecondaryTertiary, 
+                OwnerId, CreatedDate, CreatedById, LastModifiedDate, LastModifiedById
                 FROM MemberPlan
                 WHERE MemberId = :accountId AND Id IN :recordIds
                 ORDER BY CreatedDate DESC
@@ -372,9 +378,9 @@ public static List<Map<String, Object>> getBasicDetails(Id accountId, Set<Id> re
         try {
             List<Contact> records = [
                 SELECT Id, FirstName, AccountId, LastName, Email, MobilePhone, HomePhone, 
-                       Emergency_Contact_Relationship__c, MailingStreet, MailingCity, Account__c, 
-                       MailingState, MailingPostalCode, MailingCountry, Description, Emergency_Contact__c, ADT_Contact__c,Authorized_Representative__c,
-                       Is_PHI_Authorized__c, Is_Healthcare_Proxy__c, CreatedDate, LastModifiedDate
+                Emergency_Contact_Relationship__c, MailingStreet, MailingCity, Account__c, 
+                MailingState, MailingPostalCode, MailingCountry, Description, Emergency_Contact__c, ADT_Contact__c,Authorized_Representative__c,
+                Is_PHI_Authorized__c, Is_Healthcare_Proxy__c, CreatedDate, LastModifiedDate
                 FROM Contact
                 WHERE Account__c = :accountId AND Id IN :recordIds
                 ORDER BY CreatedDate DESC
@@ -417,7 +423,7 @@ public static List<Map<String, Object>> getBasicDetails(Id accountId, Set<Id> re
         try {
             List<HealthcareFacility> records = [
                 SELECT Id, Name, AccountId, Phone__c, Email__c, Facility_type__c, Fax_Number__c, 
-                       Website__c, Mailing_Address__c, CreatedDate, LastModifiedDate
+                Website__c, Mailing_Address__c, CreatedDate, LastModifiedDate
                 FROM HealthcareFacility
                 WHERE AccountId = :accountId AND Id IN :recordIds
                 ORDER BY CreatedDate DESC
@@ -454,8 +460,8 @@ public static List<Map<String, Object>> getBasicDetails(Id accountId, Set<Id> re
         try {
             List<HealthcarePractitionerFacility> records = [
                 SELECT Id, Name, AccountId, PractitionerId, Fax_Number__c, Website__c, 
-                       Practitioner.Name, Phone__c, Email__c, Specialty__c, EffectiveFrom, 
-                       EffectiveTo, Address__c, CreatedDate, LastModifiedDate
+                Practitioner.Name, Phone__c, Email__c, Specialty__c, EffectiveFrom, 
+                EffectiveTo, Address__c, CreatedDate, LastModifiedDate
                 FROM HealthcarePractitionerFacility
                 WHERE AccountId = :accountId AND Id IN :recordIds
                 ORDER BY CreatedDate DESC];            
@@ -484,7 +490,68 @@ public static List<Map<String, Object>> getBasicDetails(Id accountId, Set<Id> re
             System.debug(LoggingLevel.ERROR, 'Error getting healthcare professionals: ' + e.getMessage() + '\nStack: ' + e.getStackTraceString());
         }
         return professionals;
-    }    
+    }  
+    
+    @TestVisible
+    private static List<Map<String, Object>> getLabs(Id accountId, Set<Id> recordIds) {
+        List<Map<String, Object>> labs = new List<Map<String, Object>>();
+        if (accountId == null) return labs;
+        try {
+            List<CareObservation> records = [
+                SELECT Id, Name, ObservedSubjectId, Category, ObservationStatus,
+                Range_High__c, Value_Quantity__c,ValueInterpretation,EffectiveDateTime
+                FROM CareObservation
+                WHERE ObservedSubjectId = :accountId
+                AND Id IN :recordIds
+                ORDER BY CreatedDate DESC
+            ];
+            
+            for (CareObservation record : records) {
+                Map<String, Object> data = new Map<String, Object>();
+                data.put('id',                record.Id);
+                data.put('Name',         record.Name != null ? record.Name : '');
+                data.put('accountId',         record.ObservedSubjectId);
+                data.put('Category',          record.Category);
+                data.put('ObservationStatus', record.ObservationStatus);
+                data.put('Range_High',        record.Range_High__c);
+                data.put('Value_Quantity',    record.Value_Quantity__c);
+                data.put('Value_Interpretation',  record.ValueInterpretation);
+                data.put('Effective_Date',  record.EffectiveDateTime);
+                labs.add(data);
+            }
+            
+        } catch(Exception ex) {
+            System.debug(LoggingLevel.ERROR, 'Error in getLabs: ' + ex.getMessage() + '\nStack: ' + ex.getStackTraceString());
+        }
+        return labs;
+    }  
+    
+     public static List<Map<String, Object>> getImmunizations(Id accountId, Set<Id> recordIds) {
+        List<Map<String, Object>> Immunizations = new List<Map<String, Object>>();
+        if (accountId == null) return Immunizations;
+        try{
+            List<PatientImmunization> records = [
+                SELECT Id, Vaccine_Name__c,Status,VaccinationDate, PatientId FROM 
+                PatientImmunization WHERE PatientId = :accountId AND Id IN :recordIds ORDER BY CreatedDate DESC
+                ];
+            
+            for (PatientImmunization record : records) {
+                Map<String, Object> data = new Map<String, Object>();
+                data.put('id',                record.Id);
+                data.put('name', record.Vaccine_Name__c != null ? record.Vaccine_Name__c : '');
+                data.put('accountId',         record.PatientId);
+                data.put('status',          record.Status);
+                data.put('vaccine_date', record.VaccinationDate);
+             
+                Immunizations.add(data);
+            }  
+        } catch (Exception  ex) {
+            System.debug(LoggingLevel.ERROR, 'Error in Immunizations : ' + ex.getMessage() + '\nStack: ' + ex.getStackTraceString());
+            
+        }
+        return Immunizations;
+    }
+    
     @TestVisible
     private Static HttpResponse sendHttpRequest(String endpoint, Map<String, Object> payload){
         HttpRequest req = new HttpRequest();
@@ -500,7 +567,7 @@ public static List<Map<String, Object>> getBasicDetails(Id accountId, Set<Id> re
         HttpResponse res = http.send(req);
         return res;
     }   
- 
+    
     @TestVisible
     private static String formatDateTime(Object dt) {
         if (dt == null) return null;        

@@ -1,0 +1,265 @@
+<template>
+    <lightning-card icon-name="standard:care_request_review">
+        <div slot="title" class="title-wrap">
+            <span class="card-title">AI File Insights</span>
+            <template if:true={analysisReady}>
+                <span class="status-pill saved">Loaded from Saved AI Note</span>
+            </template>
+            <template if:true={showUnavailablePill}>
+                <span class="status-pill pending">AI Insights not available</span>
+            </template>
+        </div>
+
+        <template if:true={isLoading}>
+            <div class="loading-panel slds-is-relative">
+                <lightning-spinner alternative-text="Loading AI Insights..." size="small"></lightning-spinner>
+                <p class="loading-text">Loading saved AI insights...</p>
+            </div>
+        </template>
+
+        <template if:false={isLoading}>
+            <template if:true={fileInfo}>
+                <div class="top-bar">
+                    <div class="file-badge">
+                        <lightning-icon icon-name="doctype:attachment" size="x-small" class="badge-icon"></lightning-icon>
+                        <div class="badge-content">
+                            <div class="badge-title">{fileInfo.title}</div>
+                            <div class="badge-meta">{fileInfo.fileType} &bull; {fileInfo.size} &bull; {fileInfo.createdDate}</div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <template if:true={hasMessage}>
+                <div class={messageClass}>
+                    <lightning-icon icon-name={messageIcon} size="x-small" class="slds-m-right_x-small"></lightning-icon>
+                    <span>{message}</span>
+                </div>
+            </template>
+
+            <div class="hero-banner">
+                <div class="hero-copy">
+                    <div class="hero-heading">Clear summary, extracted values, and saved AI analytics</div>
+                    <div class="hero-subcopy">
+                        This view reads the saved analysis attachment linked to the original Salesforce file.
+                    </div>
+                </div>
+
+                <div class="hero-metrics">
+                    <template for:each={stats} for:item="item">
+                        <div key={item.id} class="metric-card">
+                            <lightning-icon icon-name={item.iconName} size="xx-small" class="metric-icon"></lightning-icon>
+                            <div class="metric-value">{item.value}</div>
+                            <div class="metric-label">{item.label}</div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <template if:true={hasPatientContext}>
+                <section class="panel patient-context-card">
+                    <div class="panel-header patient-context-header">
+                        <div class="panel-title-wrap">
+                            <lightning-icon icon-name="standard:person_account" size="x-small" class="panel-icon"></lightning-icon>
+                            <span class="panel-title">Patient &amp; Provider Context</span>
+                        </div>
+                        <span class="panel-subtitle">Related record details</span>
+                    </div>
+
+                    <div class="patient-context-body">
+                        <template if:true={hasPatientOverview}>
+                            <div class="context-section">
+                                <div class="context-section-heading">
+                                    <lightning-icon icon-name="utility:user" size="xx-small" class="context-heading-icon"></lightning-icon>
+                                    <span>Patient Overview</span>
+                                </div>
+                                <div class="context-fields-grid">
+                                    <div class="context-field">
+                                        <div class="context-field-label">Name</div>
+                                        <div class="context-field-value">{patientName}</div>
+                                    </div>
+                                    <div class="context-field">
+                                        <div class="context-field-label">Age</div>
+                                        <div class="context-field-value">{patientAge}</div>
+                                    </div>
+                                    <div class="context-field">
+                                        <div class="context-field-label">Gender</div>
+                                        <div class="context-field-value">{patientGender}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+
+                        <template if:true={hasOrganization}>
+                            <div class="context-section">
+                                <div class="context-section-heading">
+                                    <lightning-icon icon-name="utility:company" size="xx-small" class="context-heading-icon"></lightning-icon>
+                                    <span>Consulting Organization</span>
+                                </div>
+                                <div class="context-fields-grid">
+                                    <div class="context-field context-field-wide">
+                                        <div class="context-field-label">Healthcare Provider / Facility (Hospital)</div>
+                                        <div class="context-field-value">{organizationName}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </section>
+            </template>
+
+            <template if:true={analysisReady}>
+                <div class="insights-grid">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div class="panel-title-wrap">
+                                <lightning-icon icon-name="utility:tag" size="x-small" class="panel-icon"></lightning-icon>
+                                <span class="panel-title">Tags</span>
+                            </div>
+                            <span class="panel-subtitle">Quick classification</span>
+                        </div>
+
+                        <template if:true={hasTagGroups}>
+                            <div class="tag-groups">
+                                <template for:each={decoratedTagGroups} for:item="group">
+                                    <div key={group.groupKey} class={group.themeClass}>
+                                        <div class="tag-group-name">{group.category}</div>
+                                        <div class="tag-chip-wrap">
+                                            <template for:each={group.tagItems} for:item="tag">
+                                                <span key={tag.key} class="tag-chip">{tag.label}</span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+
+                        <template if:false={hasTagGroups}>
+                            <div class="empty-block">No tags extracted.</div>
+                        </template>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div class="panel-title-wrap">
+                                <lightning-icon icon-name="utility:record" size="x-small" class="panel-icon"></lightning-icon>
+                                <span class="panel-title">Key Fields</span>
+                            </div>
+                            <span class="panel-subtitle">Actual values from the file</span>
+                        </div>
+
+                        <template if:true={hasKeyFieldGroups}>
+                            <div class="field-groups">
+                                <template for:each={keyFieldGroups} for:item="group">
+                                    <div key={group.name} class="field-group">
+                                        <div class="field-group-header">
+                                            <lightning-icon icon-name={group.iconName} size="xx-small" class="field-group-icon"></lightning-icon>
+                                            <span>{group.name}</span>
+                                        </div>
+
+                                        <div class="field-grid">
+                                            <template for:each={group.items} for:item="field">
+                                                <div key={field.key} class="field-card">
+                                                    <div class="field-label">{field.label}</div>
+                                                    <div class="field-value">{field.value}</div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+
+                        <template if:false={hasKeyFieldGroups}>
+                            <div class="empty-block">No key fields extracted.</div>
+                        </template>
+                    </section>
+                </div>
+
+                <div class="tabs-bar">
+                    <div class="tabs-scroll">
+                        <template for:each={tabItems} for:item="item">
+                            <button
+                                key={item.id}
+                                class={item.cssClass}
+                                data-id={item.id}
+                                onclick={handleTabClick}
+                                type="button"
+                            >
+                                <span class="tab-dot" style={item.dotStyle}></span>
+                                <span>{item.label}</span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <section class="panel analysis-panel">
+                    <div class="panel-header">
+                        <div class="panel-title-wrap">
+                            <lightning-icon icon-name="utility:einstein" size="x-small" class="panel-icon"></lightning-icon>
+                            <span class="panel-title">{activeTabLabel}</span>
+                        </div>
+                        <span class="panel-subtitle">{analysis.analysisTitle}</span>
+                    </div>
+
+                    <div class="analysis-content">
+                        <lightning-formatted-rich-text value={activeContent}></lightning-formatted-rich-text>
+                    </div>
+                </section>
+            </template>
+
+            <section class="panel qa-panel">
+                <div class="panel-header">
+                    <div class="panel-title-wrap">
+                        <lightning-icon icon-name="utility:question" size="x-small" class="panel-icon"></lightning-icon>
+                        <span class="panel-title">Ask AI about this file</span>
+                    </div>
+                </div>
+
+                <div class="qa-row">
+                    <div class="qa-input-wrap">
+                        <lightning-input
+                            type="text"
+                            value={question}
+                            onchange={handleQuestionChange}
+                            onkeyup={handleKeyUp}
+                            variant="label-hidden"
+                            label="Ask AI"
+                            placeholder="Ask something about this file..."
+                        ></lightning-input>
+                    </div>
+
+                    <div class="qa-action-wrap">
+                        <lightning-button
+                            label="Ask AI"
+                            variant="brand-outline"
+                            icon-name="utility:einstein"
+                            onclick={handleAskQuestion}
+                            disabled={isAskDisabled}
+                        ></lightning-button>
+                    </div>
+                </div>
+
+                <template if:true={isQuestionLoading}>
+                    <div class="loading-panel slds-is-relative">
+                        <lightning-spinner alternative-text="Thinking..." size="small"></lightning-spinner>
+                        <p class="loading-text">Gemini is answering your question...</p>
+                    </div>
+                </template>
+
+                <template if:true={answer}>
+                    <div class="answer-box">
+                        <lightning-formatted-rich-text value={formattedAnswer}></lightning-formatted-rich-text>
+                    </div>
+                </template>
+            </section>
+
+            <template if:true={errorMessage}>
+                <div class="error-bar">
+                    <lightning-icon icon-name="utility:error" size="x-small" class="slds-m-right_x-small"></lightning-icon>
+                    <span>{errorMessage}</span>
+                </div>
+            </template>
+        </template>
+    </lightning-card>
+</template>

@@ -68,54 +68,26 @@ public with sharing class ActivityTimelineController {
             ));
         }
 
-        // for (EmailMessage em : [
-        //     SELECT Id, Subject, FromAddress, ToAddress, RelatedToId, CreatedDate
-        //     FROM EmailMessage
-        //     WHERE RelatedToId = :recordId
-        //     ORDER BY CreatedDate DESC
-        //     LIMIT :limitSize OFFSET :offsetSize
-        // ]) {
-        //     String key = 
-        //         (em.Subject != null ? em.Subject.trim().toLowerCase() : '') + '|' +
-        //         (em.FromAddress != null ? em.FromAddress.trim().toLowerCase() : '') + '|' +
-        //         (em.ToAddress != null ? em.ToAddress.trim().toLowerCase() : '') + '|' +
-        //         (em.RelatedToId != null ? String.valueOf(em.RelatedToId) : '');
-
-        //     if (!uniqueEmails.containsKey(key)) {
-        //         uniqueEmails.put(key, em);
-        //     }
-        // }
-        
-        // for (EmailMessage em : uniqueEmails.values()) {
-        //     activities.add(new ActivityWrapper(
-        //         em.Id, 
-        //         'Email', 
-        //         em.Subject, 
-        //         em.FromAddress, 
-        //         em.ToAddress, 
-        //         em.CreatedDate
-        //     ));
-        // }
-  for (Email_Log__c el : [
-    SELECT Id,
-           Subject__c,
-           From_Email__c,
-           To_Email__c,
-           Received_Date_Time__c
-    FROM Email_Log__c
-    WHERE Account__c = :recordId
-    ORDER BY Received_Date_Time__c DESC
-    LIMIT :limitSize OFFSET :offsetSize
-]) {
-    activities.add(new ActivityWrapper(
-        el.Id,
-        'Email',
-        el.Subject__c,
-        el.From_Email__c,
-        el.To_Email__c,
-        el.Received_Date_Time__c
-    ));
-}
+        for (Email_Log__c el : [
+            SELECT Id,
+                   Subject__c,
+                   From_Email__c,
+                   To_Email__c,
+                   Received_Date_Time__c
+            FROM Email_Log__c
+            WHERE Account__c = :recordId
+            ORDER BY Received_Date_Time__c DESC
+            LIMIT :limitSize OFFSET :offsetSize
+        ]) {
+            activities.add(new ActivityWrapper(
+                el.Id,
+                'Email',
+                el.Subject__c,
+                el.From_Email__c,
+                el.To_Email__c,
+                el.Received_Date_Time__c
+            ));
+        }
 
 
         // --- CALL LOGS ---
@@ -137,110 +109,28 @@ public with sharing class ActivityTimelineController {
             ));
         }
         
-        // --- MESSAGING SESSIONS ---
-        // List<MessagingSession> sessions = [
-        //     SELECT Id, Name, Status, CreatedDate
-        //     FROM MessagingSession
-        //     WHERE EndUserAccountId = :recordId
-        //     ORDER BY CreatedDate DESC
-        //     LIMIT :limitSize OFFSET :offsetSize
-        // ];
-        // for (MessagingSession ms : sessions) {
-        //     activities.add(new ActivityWrapper(
-        //         ms.Id,
-        //         'MessagingSession',
-        //         ms.Name,
-        //         ms.Status,
-        //         '',
-        //         ms.CreatedDate
-        //     ));
-        // }
-        
-//       List<Message_Session__c> sessions = [
-//     SELECT Id,
-//            Name,
-//            Session_Status__c,
-//            CreatedDate
-//     FROM Message_Session__c
-//     WHERE Id IN (
-//         SELECT Message_Session__c
-//         FROM sra__Message_History__c
-//         WHERE sra__Account__c = :recordId
-//         AND Message_Session__c != NULL
-//     )
-//     ORDER BY CreatedDate DESC
-//     LIMIT :limitSize
-//     OFFSET :offsetSize
-// ];
-      List<Message_Session__c> sessions = [
-    SELECT Id,
-           Name,
-           Session_Status__c,Account__c,
-           CreatedDate
-    FROM Message_Session__c
-    WHERE Account__c =:recordId
-    ORDER BY CreatedDate DESC
-    LIMIT :limitSize
-    OFFSET :offsetSize
-];
+        List<Message_Session__c> sessions = [
+            SELECT Id,
+                   Name,
+                   Session_Status__c, Account__c,
+                   CreatedDate
+            FROM Message_Session__c
+            WHERE Account__c = :recordId
+            ORDER BY CreatedDate DESC
+            LIMIT :limitSize
+            OFFSET :offsetSize
+        ];
 
-for (Message_Session__c ms : sessions) {
-    activities.add(new ActivityWrapper(
-        ms.Id,
-        'MessagingSession',
-        ms.Name,
-        ms.Session_Status__c,
-        '',
-        ms.CreatedDate
-    ));
-}
-
-
-
-
-
-//         List<Message_Session__c> sessions = [
-//                 SELECT
-//                     Id,
-//                     Name,
-//                     Session_Status__c,
-//                     CreatedDate,
-//                     sra__Message_History__r.sra__Account__c
-//                 FROM Message_Session__c
-//                 WHERE sra__Message_History__r.sra__Account__c = :recordId
-//                 ORDER BY CreatedDate DESC
-//                 LIMIT :limitSize
-//                 OFFSET :offsetSize
-//             ];
-//    for (Message_Session__c ms : sessions) {
-//             activities.add(new ActivityWrapper(
-//                 ms.Id,
-//                 'MessagingSession',
-//                 ms.Name,
-//                 ms.Session_Status__c,
-//                 '',
-//                 ms.CreatedDate
-//             ));
-//         }
-
-        // --- Voice Calls ---
-        // List<VoiceCall> voiceCall = [
-        //     SELECT Id, Name, CallType,RelatedRecordId, CreatedDate
-        //     FROM VoiceCall
-        //     WHERE RelatedRecordId = :recordId
-        //     ORDER BY CreatedDate DESC
-        //     LIMIT :limitSize OFFSET :offsetSize
-        // ];
-        // for (VoiceCall vc : voiceCall) {
-        //     activities.add(new ActivityWrapper(
-        //         vc.Id,
-        //         'VoiceCall',
-        //         vc.Name,
-        //         vc.CallType,
-        //         '',
-        //         vc.CreatedDate
-        //     ));
-        // }
+        for (Message_Session__c ms : sessions) {
+            activities.add(new ActivityWrapper(
+                ms.Id,
+                'MessagingSession',
+                ms.Name,
+                ms.Session_Status__c,
+                '',
+                ms.CreatedDate
+            ));
+        }
 
         // --- MESSAGE HISTORY (custom object) ---
         for (sra__Message_History__c mh : [
@@ -280,6 +170,42 @@ for (Message_Session__c ms : sessions) {
             ));
         }
 
+        // --- SENT FAX ---
+        for (efaxapp__Sent_Fax__c sf : [
+            SELECT Id, Name, efaxapp__Fax_Number__c, efaxapp__Status__c, CreatedDate
+            FROM efaxapp__Sent_Fax__c
+            WHERE efaxapp__Account__c = :recordId
+            ORDER BY CreatedDate DESC
+            LIMIT :limitSize OFFSET :offsetSize
+        ]) {
+            activities.add(new ActivityWrapper(
+                sf.Id,
+                'SentFax',
+                sf.Name,
+                sf.efaxapp__Fax_Number__c,
+                sf.efaxapp__Status__c,
+                sf.CreatedDate
+            ));
+        }
+
+        // --- RECEIVED FAX ---
+        for (efaxapp__Received_Fax__c rf : [
+            SELECT Id, Name, efaxapp__Fax_Number__c, efaxapp__Status__c, CreatedDate
+            FROM efaxapp__Received_Fax__c
+            WHERE efaxapp__Account__c = :recordId
+            ORDER BY CreatedDate DESC
+            LIMIT :limitSize OFFSET :offsetSize
+        ]) {
+            activities.add(new ActivityWrapper(
+                rf.Id,
+                'ReceivedFax',
+                rf.Name,
+                rf.efaxapp__Fax_Number__c,
+                rf.efaxapp__Status__c,
+                rf.CreatedDate
+            ));
+        }
+
         // --- SORT ALL ACTIVITIES ---
         activities.sort();
         return activities;
@@ -300,7 +226,7 @@ for (Message_Session__c ms : sessions) {
             this.title = title;
             this.field1 = field1;
             this.field2 = field2;
-            this.body = field2; // Note: Should this be 'field2' or should it be a separate parameter?
+            this.body = field2;
             this.createdDate = createdDate;
         }
         
@@ -310,7 +236,8 @@ for (Message_Session__c ms : sessions) {
             return (this.createdDate > other.createdDate) ? -1 : 1;
         }
     }
-     private static String truncateWords(String text, Integer maxWords) {
+
+    private static String truncateWords(String text, Integer maxWords) {
         if (String.isBlank(text)) return '';
         List<String> words = text.trim().split('\\s+');
         if (words.size() <= maxWords) return text.trim();

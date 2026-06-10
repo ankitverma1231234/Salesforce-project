@@ -7,6 +7,11 @@
         <namespace>ccra</namespace>
     </packageVersions>
     <packageVersions>
+        <majorNumber>5</majorNumber>
+        <minorNumber>11</minorNumber>
+        <namespace>efaxapp</namespace>
+    </packageVersions>
+    <packageVersions>
         <majorNumber>1</majorNumber>
         <minorNumber>25</minorNumber>
         <namespace>sra</namespace>

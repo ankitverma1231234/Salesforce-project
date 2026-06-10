@@ -1,6 +1,5 @@
 trigger VisitTrigger on Visit (after delete, after insert, after update) {    
     if(Trigger.isDelete &&Trigger.isAfter) {
-        //logic for delete log record 
         RecordAuditLogHandler.logDeletedRecords(
             Trigger.old,
             'Visit',   
@@ -9,7 +8,10 @@ trigger VisitTrigger on Visit (after delete, after insert, after update) {
             'AccountId'                  
         );  
     }
-    if (Trigger.isAfter &&( Trigger.isInsert || Trigger.isUpdate)) {
-        //VisitTiggerHandler.handleAfterInsert(Trigger.new);
+    if (Trigger.isAfter && Trigger.isInsert) {
+        VisitNotificationHandler.handleAfterInsert(Trigger.new);   
+    }
+    if(Trigger.isAfter && Trigger.isUpdate){
+        VisitNotificationHandler.handleAfterUpdate(Trigger.new, Trigger.oldMap);
     }
 }

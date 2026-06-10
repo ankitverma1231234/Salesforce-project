@@ -1,6 +1,7 @@
 public class MetriportUploadQueueable implements Queueable, Database.AllowsCallouts {
     
-    private String metriportPatientId;
+    
+private String metriportPatientId;
     private String patientName;
     private Blob fileBlob;           // ✅ FIXED
     private String fileName;
@@ -55,89 +56,145 @@ public class MetriportUploadQueueable implements Queueable, Database.AllowsCallo
     }
     
     public void execute(QueueableContext context) {
-        try {
-            
-            Http http = new Http();
-            Metriport_Config__mdt config = getActiveConfig();
-            
-            // ── STEP 1: Create Document Reference ──
-            String docRefBody = JSON.serialize(new Map<String, Object>{
-                'type' => new Map<String, Object>{
-                    'text' => documentTypeText,
-                    'coding' => new List<Object>{
-                        new Map<String, Object>{
-                            'system'  => 'http://loinc.org',
-                            'code'    => loincCode,
-                            'display' => loincDisplay
-                        }
-                    }
-                },
-                'description' => fileName,
-                
-                // 🔥 Correct FHIR naming
-                'content' => new List<Object>{
+    try {
+
+        System.debug('=== Metriport Upload Started ===');
+        System.debug('Case Id: ' + caseId);
+        System.debug('Patient Id: ' + metriportPatientId);
+        System.debug('File Name: ' + fileName);
+
+        Http http = new Http();
+        Metriport_Config__mdt config = getActiveConfig();
+
+        System.debug('Base URL: ' + config.Base_URL__c);
+
+        // STEP 1: Create Document Reference
+        String docRefBody = JSON.serialize(new Map<String, Object>{
+            'type' => new Map<String, Object>{
+                'text' => documentTypeText,
+                'coding' => new List<Object>{
                     new Map<String, Object>{
-                        'attachment' => new Map<String, Object>{
-                            'title' => fileName,
-                            'contentType' => getMimeType(fileExtension)
-                        }
-                    }
-                },
-                
-                'context' => new List<Object>{
-                    new Map<String, Object>{
-                        'period' => new Map<String, Object>{
-                            'start' => startDate
-                        },
-                        'facilityType' => new Map<String, Object>{
-                            'text' => facilityType
-                        }
+                        'system'  => 'http://loinc.org',
+                        'code'    => loincCode,
+                        'display' => loincDisplay
                     }
                 }
-            });
-            
-            HttpRequest docRefReq = new HttpRequest();
-            docRefReq.setEndpoint(config.Base_URL__c + '/medical/v1/document/upload?patientId=' + metriportPatientId);
-            docRefReq.setMethod('POST');
-            docRefReq.setHeader('Content-Type', 'application/json');
-            docRefReq.setHeader('x-api-key', config.API_Key__c);
-            docRefReq.setBody(docRefBody);
-            
-            HttpResponse docRefRes = http.send(docRefReq);
-            
-            if (docRefRes.getStatusCode() != 200 && docRefRes.getStatusCode() != 201) {
-                throw new CalloutException(docRefRes.getBody());
+            },
+            'description' => fileName,
+            'content' => new List<Object>{
+                new Map<String, Object>{
+                    'attachment' => new Map<String, Object>{
+                        'title' => fileName,
+                        'contentType' => getMimeType(fileExtension)
+                    }
+                }
+            },
+            'context' => new List<Object>{
+                new Map<String, Object>{
+                    'period' => new Map<String, Object>{
+                        'start' => startDate
+                    },
+                    'facilityType' => new Map<String, Object>{
+                        'text' => facilityType
+                    }
+                }
             }
-            
-            Map<String, Object> response =
-                (Map<String, Object>) JSON.deserializeUntyped(docRefRes.getBody());
-            
-            String uploadUrl = (String) response.get('uploadUrl');
-            
-            // ── STEP 2: Upload File ──
-            HttpRequest uploadReq = new HttpRequest();
-            uploadReq.setEndpoint(uploadUrl);
-            uploadReq.setMethod('PUT');
-            uploadReq.setHeader('Content-Type', getMimeType(fileExtension)); // ✅ FIXED
-            uploadReq.setBodyAsBlob(fileBlob);
-            
-            HttpResponse uploadRes = http.send(uploadReq);
-            
-            if (uploadRes.getStatusCode() != 200 && uploadRes.getStatusCode() != 204) {
-                throw new CalloutException(uploadRes.getBody());
-            }
-            
-            // ✅ Update Case
-            update new Case(
-                Id = caseId,
-                Send_File_To_Metriport__c = true
+        });
+
+        System.debug('Document Reference Request Body: ' + docRefBody);
+
+        HttpRequest docRefReq = new HttpRequest();
+        docRefReq.setEndpoint(config.Base_URL__c +
+            '/medical/v1/document/upload?patientId=' +
+            metriportPatientId);
+
+        docRefReq.setMethod('POST');
+        docRefReq.setHeader('Content-Type', 'application/json');
+        docRefReq.setHeader('x-api-key', config.API_Key__c);
+        docRefReq.setBody(docRefBody);
+
+        System.debug('Sending Document Reference Request...');
+
+        HttpResponse docRefRes = http.send(docRefReq);
+
+        System.debug('Document Reference Status Code: ' +
+            docRefRes.getStatusCode());
+
+        System.debug('Document Reference Response: ' +
+            docRefRes.getBody());
+
+        if (docRefRes.getStatusCode() != 200 &&
+            docRefRes.getStatusCode() != 201) {
+
+            throw new CalloutException(
+                'Document Reference Creation Failed: ' +
+                docRefRes.getBody()
             );
-            
-        } catch (Exception e) {
-            System.debug('ERROR: ' + e.getMessage());
-            throw e;
         }
+
+        Map<String, Object> response =
+            (Map<String, Object>)JSON.deserializeUntyped(
+                docRefRes.getBody()
+            );
+
+        String uploadUrl = (String)response.get('uploadUrl');
+
+        System.debug('Upload URL Received: ' + uploadUrl);
+
+        // STEP 2: Upload File
+        HttpRequest uploadReq = new HttpRequest();
+        uploadReq.setEndpoint(uploadUrl);
+        uploadReq.setMethod('PUT');
+        uploadReq.setHeader(
+            'Content-Type',
+            getMimeType(fileExtension)
+        );
+        uploadReq.setBodyAsBlob(fileBlob);
+
+        System.debug('Uploading file to Metriport...');
+        System.debug('File Size (Bytes): ' + fileBlob.size());
+
+        HttpResponse uploadRes = http.send(uploadReq);
+
+        System.debug('Upload Status Code: ' +
+            uploadRes.getStatusCode());
+
+        System.debug('Upload Response Body: ' +
+            uploadRes.getBody());
+
+        if (uploadRes.getStatusCode() != 200 &&
+            uploadRes.getStatusCode() != 204) {
+
+            throw new CalloutException(
+                'File Upload Failed: ' +
+                uploadRes.getBody()
+            );
+        }
+
+        System.debug('File uploaded successfully.');
+
+        // Update Case
+        Case c = new Case(
+            Id = caseId,
+            Send_File_To_Metriport__c = true,
+            Status = 'Closed'
+        );
+
+        update c;
+
+        System.debug('Case Updated Successfully');
+        System.debug('Case Status Changed To Closed');
+        System.debug('=== Metriport Upload Completed ===');
+
+    } catch (Exception e) {
+
+        System.debug('=== ERROR OCCURRED ===');
+        System.debug('Error Message: ' + e.getMessage());
+        System.debug('Stack Trace: ' + e.getStackTraceString());
+
+        throw e;
     }
+}
     
     // 🔥 Helper for correct MIME type
     private static String getMimeType(String ext) {

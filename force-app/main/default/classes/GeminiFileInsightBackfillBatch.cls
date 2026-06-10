@@ -17,15 +17,18 @@ implements Database.Batchable<SObject>, Database.AllowsCallouts, Database.Statef
         this.forceRegenerate = forceRegenerate == true;
         this.contentVersionId = contentVersionId;
     }
+      public GeminiFileInsightBackfillBatch(Boolean forceRegenerate, Boolean attachPdf) {
+        this.forceRegenerate = forceRegenerate == true;
+    }
     
     public Database.QueryLocator start(Database.BatchableContext bc) {
         
-        String query = 
+        String query =
             'SELECT Id, ContentDocumentId, Title, FileType ' +
             'FROM ContentVersion ' +
             'WHERE IsLatest = true ' +
             'AND Source__c = \'Metriport\' ' +
-            'AND is_AI_Summary_Generated__c = false ' +
+            (forceRegenerate ? '' : 'AND is_AI_Summary_Generated__c = false ') +
             'AND (NOT Title LIKE \'%AI Generated Summary%\') ' +
             'AND FileType != \'TIF\' ' +
             'AND FirstPublishLocationId IN (SELECT Id FROM Account)';

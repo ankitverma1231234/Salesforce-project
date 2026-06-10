@@ -1,43 +1,35 @@
-@isTest(SeeAllData=true)
+@IsTest(SeeAllData=true)
 private class GeminiFileInsightBackfillBatchTest {
-
-    @isTest
+    @IsTest
     static void testExecuteAccountLinkedFile() {
-        Account acc = [
-            SELECT Id
-            FROM Account
-            WHERE Metriport_Patient_Id__c = 'patient-123'
-            LIMIT 1
-        ];
-
+        Account testAccount = FileStorageApexTestFactory.getTestAccount();
         ContentVersion cv = new ContentVersion(
             Title = 'Account Linked Doc',
             PathOnClient = 'AccountDoc.pdf',
-            VersionData = Blob.valueOf('PDF content here')
+            VersionData = Blob.valueOf('PDF content here'),
+            FirstPublishLocationId = testAccount.Id,
+            Source__c = 'Metriport'
         );
         insert cv;
 
-        cv = [SELECT Id, ContentDocumentId, Title, FileType FROM ContentVersion WHERE Id = :cv.Id];
-
-        ContentDocumentLink cdl = new ContentDocumentLink(
-            ContentDocumentId = cv.ContentDocumentId,
-            LinkedEntityId = acc.Id,
-            ShareType = 'V',
-            Visibility = 'AllUsers'
-        );
-        insert cdl;
+        cv = [
+            SELECT Id, ContentDocumentId, Title, FileType
+            FROM ContentVersion
+            WHERE Id = :cv.Id
+        ];
 
         Test.startTest();
-        GeminiFileInsightBackfillBatch batch = new GeminiFileInsightBackfillBatch(true, true);
+        GeminiFileInsightBackfillBatch batch =
+            new GeminiFileInsightBackfillBatch(true, true, cv.Id);
 
-        // Cover start
-        Database.QueryLocator ql = batch.start(null);
-        System.assertNotEquals(null, ql, 'QueryLocator should not be null');
+        Database.QueryLocator queryLocator = batch.start(null);
+        System.assertNotEquals(
+            null,
+            queryLocator,
+            'QueryLocator should not be null.'
+        );
 
-        // Cover execute — Account linked, callout fails in test = hits catch block
         batch.execute(null, new List<ContentVersion>{ cv });
-
-        // Cover finish with failures
         batch.finish(null);
         Test.stopTest();
 
@@ -46,7 +38,7 @@ private class GeminiFileInsightBackfillBatchTest {
         System.assertEquals(0, batch.totalSkipped);
     }
 
-    @isTest
+    @IsTest
     static void testExecuteNonAccountLinkedSkipped() {
         ContentVersion cv = new ContentVersion(
             Title = 'Non Account Doc',
@@ -55,14 +47,17 @@ private class GeminiFileInsightBackfillBatchTest {
         );
         insert cv;
 
-        cv = [SELECT Id, ContentDocumentId, Title, FileType FROM ContentVersion WHERE Id = :cv.Id];
+        cv = [
+            SELECT Id, ContentDocumentId, Title, FileType
+            FROM ContentVersion
+            WHERE Id = :cv.Id
+        ];
 
         Test.startTest();
-        GeminiFileInsightBackfillBatch batch = new GeminiFileInsightBackfillBatch(false, false);
+        GeminiFileInsightBackfillBatch batch =
+            new GeminiFileInsightBackfillBatch(false, false, cv.Id);
 
         batch.execute(null, new List<ContentVersion>{ cv });
-
-        // Cover finish with zero failures but records processed
         batch.finish(null);
         Test.stopTest();
 
@@ -72,12 +67,12 @@ private class GeminiFileInsightBackfillBatchTest {
         System.assertEquals(0, batch.totalFailed);
     }
 
-    @isTest
+    @IsTest
     static void testFinishZeroProcessed() {
         Test.startTest();
-        GeminiFileInsightBackfillBatch batch = new GeminiFileInsightBackfillBatch(null, null);
+        GeminiFileInsightBackfillBatch batch =
+            new GeminiFileInsightBackfillBatch(null, null, null);
 
-        // Cover finish with zero processed — hits the "No records were processed" warning
         batch.finish(null);
         Test.stopTest();
 

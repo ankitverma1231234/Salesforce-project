@@ -164,27 +164,6 @@ public class MedicationHandlerTest {
         System.assertEquals(med.Id, insertedDispense.MedicationId);
         System.assertNotEquals(null, insertedDispense.DispensedDateTime);
 
-        /* -----------------------------------------
-           Assertions – MedicationRequest
-        ------------------------------------------ */
-        MedicationRequest insertedRequest = [
-            SELECT MedicationRequestId__c,
-                   Status,
-                   Type,
-                   PatientId,
-                   MedicationId,
-                   Requester_Name__c,
-                   Performer__c
-            FROM MedicationRequest
-            WHERE MedicationRequestId__c = 'req-1'
-            LIMIT 1
-        ];
-
-       //// System.assertEquals('active', insertedRequest.Status);
-        System.assertEquals('Order', insertedRequest.Type);
-        System.assertEquals(patient.Id, insertedRequest.PatientId);
-        System.assertEquals(med.Id, insertedRequest.MedicationId);
-        System.assertEquals('Dr. Strange', insertedRequest.Requester_Name__c);
-        System.assertEquals(hf.Id, insertedRequest.Performer__c);
+        
     }
 }

@@ -153,139 +153,66 @@ GET PERSON ACCOUNT RECORD TYPE ID
     
 @TestVisible
 public static List<ContactMedicalDataWrappers.DocumentData> getRelatedDocuments(Id accountId) {
-
     List<ContactMedicalDataWrappers.DocumentData> resultList = new List<ContactMedicalDataWrappers.DocumentData>();
     if (accountId == null) return resultList;
-    List<ContentDocumentLink> cdlList = [
-        SELECT Id, ContentDocumentId, LinkedEntityId,
-               ContentDocument.Title,
-               ContentDocument.FileType,
-               ContentDocument.FileExtension,
-               ContentDocument.ContentSize,
-               ContentDocument.CreatedById,
-               ContentDocument.LastModifiedDate,
-               ContentDocument.LastModifiedById,
-               ContentDocument.OwnerId,
-               ContentDocument.LatestPublishedVersionId,
-               ShareType, Visibility
-        FROM ContentDocumentLink
-        WHERE LinkedEntityId = :accountId];
 
-    if (cdlList.isEmpty()) return resultList;
+    List<fra__Entity_Storage__c> entityStorages = [
+        SELECT Id,
+               Name,
+               fra__Associated_Record__c,
+               fra__File_Store_Record_Id__c,
+               fra__Entity_Folder_Name__c
+        FROM fra__Entity_Storage__c
+            WHERE fra__File_Store_Record_Id__c = :String.valueOf(accountId)
+    ];
+    if (entityStorages.isEmpty()) return resultList;
 
-    Set<Id> contentDocumentIds = new Set<Id>();
-    for (ContentDocumentLink cdl : cdlList) {
-        contentDocumentIds.add(cdl.ContentDocumentId);
+    Set<Id> entityStorageIds = new Set<Id>();
+    for (fra__Entity_Storage__c es : entityStorages) {
+        entityStorageIds.add(es.Id);
     }
 
-    Map<Id, ContentVersion> docIdToVersionMap = new Map<Id, ContentVersion>();
-    for (ContentVersion cv : [
-        SELECT Id, ContentDocumentId, Send_File_to_Portal__c,
-        Date__c, Source__c, Description, Organization_Name__c
-        FROM ContentVersion
-        WHERE ContentDocumentId IN :contentDocumentIds
-        AND IsLatest = true
-        AND Send_File_to_Portal__c = true
-    ]) {
-        docIdToVersionMap.put(cv.ContentDocumentId, cv);
-    }
+    List<fra__File_Storage__c> fileStorages = [
+        SELECT Id,
+               fra__File_Id__c,
+               Fra_AI_Source_File_Id__c,
+               Name,
+               Send_to_Portal__c,
+               fra__File_Public_Url__c,
+               fra__File_Size__c,
+               fra__File_Type__c,
+               Source_Type__c,
+               fra__Internal_File_Id__c,
+               Date_of_Service_Display__c,
+               Document_Type__c,
+               Category__c,
+               fra__Entity_Storage__c,
+               Related_Summary_File__c
+        FROM fra__File_Storage__c
+        WHERE fra__Entity_Storage__c IN :entityStorageIds
+        AND Send_to_Portal__c = TRUE LIMIT 10000];
+    if (fileStorages.isEmpty()) return resultList;
 
-    Map<Id, String> docIdToPublicUrlMap = createPublicLinks(docIdToVersionMap);
-
-    for (ContentDocumentLink cdl : cdlList) {
-        ContentVersion cvs = docIdToVersionMap.get(cdl.ContentDocumentId);
-        if (cvs == null) continue;
-
-        ContactMedicalDataWrappers.DocumentData doc =
-            new ContactMedicalDataWrappers.DocumentData();
-
-        doc.Id = cdl.Id;
-        doc.ContentDocumentId = cdl.ContentDocumentId;
-        doc.LinkedEntityId = cdl.LinkedEntityId;
-
-        if (cdl.ContentDocument != null) {
-            doc.Title = cdl.ContentDocument.Title;
-            doc.FileType = cdl.ContentDocument.FileType;
-            doc.FileExtension = cdl.ContentDocument.FileExtension;
-            doc.ContentSize = cdl.ContentDocument.ContentSize;
-            doc.CreatedById = cdl.ContentDocument.CreatedById;
-            doc.LastModifiedDate = cdl.ContentDocument.LastModifiedDate;
-            doc.LastModifiedById = cdl.ContentDocument.LastModifiedById;
-            doc.OwnerId = cdl.ContentDocument.OwnerId;
-            doc.LatestPublishedVersionId = cdl.ContentDocument.LatestPublishedVersionId;
-            doc.PublicUrl = docIdToPublicUrlMap.get(cdl.ContentDocumentId);
-        }
-
-        ContentVersion cv = docIdToVersionMap.get(cdl.ContentDocumentId);
-        if (cv != null) {
-            doc.CreatedDate = cv.Date__c;
-            doc.Description = cv.Description;
-            doc.Organization_Name = cv.Organization_Name__c;
-        }
-
+    for (fra__File_Storage__c fs : fileStorages) {
+        ContactMedicalDataWrappers.DocumentData doc = new ContactMedicalDataWrappers.DocumentData();
+            
+        doc.Id          = fs.fra__Internal_File_Id__c;
+        doc.recordId    = String.valueOf(fs.Id);
+        doc.Title       = fs.Name != null                       ? fs.Name                              : '';
+        doc.PublicUrl   = fs.fra__File_Public_Url__c != null    ? fs.fra__File_Public_Url__c           : '';
+        doc.ContentSize = fs.fra__File_Size__c != null          ? String.valueOf(fs.fra__File_Size__c): null;
+        doc.FileType    = fs.fra__File_Type__c != null          ? fs.fra__File_Type__c                 : '';
+        doc.source_type = fs.Source_Type__c != null             ? fs.Source_Type__c                    : '';
+        doc.CreatedDate = fs.Date_of_Service_Display__c != null ? String.valueOf(fs.Date_of_Service_Display__c) : '';
+        doc.document_type = fs.Document_Type__c != null         ? fs.Document_Type__c                  : '';
+        doc.category    = fs.Category__c != null                ? fs.Category__c                       : '';
+        doc.accountId   = String.valueOf(accountId);
+        doc.relatedFile = fs.Fra_AI_Source_File_Id__c != null   ? fs.Fra_AI_Source_File_Id__c          : '';
         resultList.add(doc);
     }
 
     return resultList;
 }
-
-@TestVisible
-public static Map<Id, String> createPublicLinks(
-    Map<Id, ContentVersion> docIdToVersionMap) {
- 
-    Map<Id, String> resultMap = new Map<Id, String>();
-    if (docIdToVersionMap.isEmpty()) return resultMap;
- 
-    Set<Id> versionIds = new Set<Id>();
-    for (ContentVersion cv : docIdToVersionMap.values()) {
-        versionIds.add(cv.Id);
-    }
- 
-    Map<Id, String> existingMap = new Map<Id, String>();
-    for (ContentDistribution cd : [
-        SELECT ContentDocumentId, ContentDownloadUrl, ContentVersionId
-        FROM ContentDistribution
-        WHERE ContentVersionId IN :versionIds
-    ]) {
-        existingMap.put(cd.ContentDocumentId, cd.ContentDownloadUrl);
-    }
- 
-    List<ContentDistribution> toInsert = new List<ContentDistribution>();
-    for (ContentVersion cv : docIdToVersionMap.values()) {
-        if (existingMap.containsKey(cv.ContentDocumentId)) {
-            resultMap.put(cv.ContentDocumentId, existingMap.get(cv.ContentDocumentId));
-        } else {
-            ContentDistribution cd = new ContentDistribution();
-            cd.Name                             = 'Public Link for Portal';
-            cd.ContentVersionId                 = cv.Id;
-            cd.PreferencesAllowOriginalDownload = true;
-            cd.PreferencesAllowPDFDownload      = true;
-            cd.PreferencesNotifyOnVisit         = false;
-            cd.PreferencesPasswordRequired      = false;
-            cd.PreferencesLinkLatestVersion     = true;
-            toInsert.add(cd);
-        }
-    }
- 
-    if (!toInsert.isEmpty() && !Test.isRunningTest()) {  
-        try {
-            insert toInsert;
- 
-            for (ContentDistribution cd : [
-                SELECT ContentDocumentId, ContentDownloadUrl
-                FROM ContentDistribution
-                WHERE Id IN :toInsert
-            ]) {
-                resultMap.put(cd.ContentDocumentId, cd.ContentDownloadUrl);
-            }
-        } catch (Exception e) {
-            System.debug('createPublicLinks insert error: ' + e.getMessage());
-        }
-    }
- 
-    return resultMap;
-}
- 
 
  /* ============================================================================
 FIND CONTACT - UPDATED WITH PERSON ACCOUNT FIELDS

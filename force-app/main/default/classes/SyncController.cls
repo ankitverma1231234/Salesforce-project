@@ -42,7 +42,7 @@ public with sharing class SyncController {
         );
         
         //Metriport Filter Schduler 
-         Datetime runTimes = System.now().addMinutes(6);   
+     /*    Datetime runTimes = System.now().addMinutes(6);   
         String cronExps = runTimes.second() + ' ' +
             runTimes.minute() + ' ' +
             runTimes.hour() + ' ' +
@@ -54,7 +54,7 @@ public with sharing class SyncController {
             'SyncFilterMetriport_' + runTimes.getTime(),
             cronExps,
             new MetriportFilterScheduler(acc.Metriport_Patient_Id__c)
-        );
+        ); */
 
         
         

@@ -113,10 +113,18 @@ public class MetriportDocumentDownloadQueueable
         cv.FirstPublishLocationId = docRef.Patient__c;
         cv.Description = docRef.Description__c;
         cv.Service_Date_Time__c = docRef.Service_Date_Time__c;
-        cv.Source__c='Metriport';
+        cv.Source_Type__c ='Metriport';
         cv.Send_File_to_Portal__c = true;
         cv.Organization_Name__c =docRef.Organization_Name__c;
 
         insert cv;
+
+        // Kick off document processing pipeline
+        //for Ai Naming and Ai Summary generation and Gdrive sync
+        Document_Processing_Log__c log = new Document_Processing_Log__c();
+        log.Content_Version_Id__c    = cv.Id;
+        log.Is_Active__c             = true;
+        log.Ready_for_Attachment__c  = true;
+        insert log;
     }
 }
