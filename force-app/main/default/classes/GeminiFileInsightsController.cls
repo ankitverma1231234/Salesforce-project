@@ -347,7 +347,7 @@ public with sharing class GeminiFileInsightsController {
         newVersion.Description = 'Auto-generated AI summary PDF';
         newVersion.Related_File__c = sourceContentDocumentId;
         newVersion.FirstPublishLocationId = publishLocationId;
-        newVersion.Source__c = 'AI';
+        newVersion.Source_Type__c = 'AI';
         
         if (!sourceVersions.isEmpty()) {
             newVersion.Service_Date_Time__c = sourceVersions[0].Service_Date_Time__c;
@@ -999,7 +999,7 @@ public with sharing class GeminiFileInsightsController {
         newVersion.IsMajorVersion = true;
         newVersion.Description = 'Auto-generated AI summary PDF';
         newVersion.FirstPublishLocationId = publishLocationId;
-        newVersion.Source__c = 'AI';
+        newVersion.Source_Type__c = 'AI';
         
         if (!sourceVersions.isEmpty()) {
             newVersion.Service_Date_Time__c = sourceVersions[0].Service_Date_Time__c;
@@ -1147,7 +1147,7 @@ public with sharing class GeminiFileInsightsController {
         String fileType = cv.FileType != null ? cv.FileType.toUpperCase() : '';
         
         Set<String> textTypes = new Set<String>{
-            'TXT', 'CSV', 'XML', 'HTML', 'JSON', 'RTF', 'LOG', 'MD'
+            'TEXT', 'TXT', 'CSV', 'XML', 'HTML', 'JSON', 'RTF', 'LOG', 'MD'
                 };
                     
                     if (textTypes.contains(fileType)) {

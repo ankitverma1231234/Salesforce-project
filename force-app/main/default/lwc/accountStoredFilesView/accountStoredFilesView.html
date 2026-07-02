@@ -43,6 +43,36 @@
             </div>
 
             <div class="stored-files-content">
+
+                <!-- Two separate filter dropdowns -->
+                <div class="filter-bar">
+
+                    <!-- Source Type Filter -->
+                    <lightning-combobox
+                        name="sourceTypeFilter"
+                        label="Source Type"
+                        variant="label-hidden"
+                        placeholder="All Source Types"
+                        value={selectedSourceType}
+                        options={sourceTypeOptions}
+                        onchange={handleSourceTypeChange}
+                        class="filter-combobox">
+                    </lightning-combobox>
+
+                    <!-- Category Filter -->
+                    <lightning-combobox
+                        name="categoryFilter"
+                        label="Category"
+                        variant="label-hidden"
+                        placeholder="All Categories"
+                        value={selectedCategory}
+                        options={categoryOptions}
+                        onchange={handleCategoryChange}
+                        class="filter-combobox">
+                    </lightning-combobox>
+
+                </div>
+
                 <template if:true={showSearch}>
                     <div class="toolbar">
                         <div class="search-grid">
@@ -106,8 +136,11 @@
                                         <th scope="col" onclick={handleSort} data-field="sourceType" class="col-source sortable">
                                             Source Type
                                         </th>
-                                        <th scope="col" onclick={handleSort} data-field="category" class="col-category sortable">
-                                            Category
+                                        <th scope="col" onclick={handleSort} data-field="description" class="col-description sortable">
+                                            Description
+                                        </th>
+                                        <th scope="col" onclick={handleSort} data-field="provider" class="col-provider sortable">
+                                            Provider
                                         </th>
                                         <th scope="col" class="col-menu">Actions</th>
                                     </tr>
@@ -172,9 +205,8 @@
                                             <td class="col-source">
                                                 <span class="type-pill">{file.sourceType}</span>
                                             </td>
-                                            <td class="col-category">
-                                                <span class="type-pill">{file.category}</span>
-                                            </td>
+                                            <td class="col-description" title={file.description}>{file.description}</td>
+                                            <td class="col-provider" title={file.provider}>{file.provider}</td>
                                             <td class="col-menu">
                                                 <lightning-button-menu
                                                     icon-name="utility:threedots_vertical"
@@ -235,9 +267,8 @@
                                                     <td class="col-source">
                                                         <span class="type-pill">{child.sourceType}</span>
                                                     </td>
-                                                    <td class="col-category">
-                                                        <span class="type-pill">{child.category}</span>
-                                                    </td>
+                                                    <td class="col-description" title={child.description}>{child.description}</td>
+                                                    <td class="col-provider" title={child.provider}>{child.provider}</td>
                                                     <td class="col-menu">
                                                         <lightning-button-menu
                                                             icon-name="utility:threedots_vertical"
@@ -264,9 +295,9 @@
                     <template if:false={paginatedFileList.length}>
                         <div class="empty-state">
                             <lightning-icon icon-name="standard:file" size="large" alternative-text="No files"></lightning-icon>
-                            <p class="slds-text-heading_small slds-m-top_small">No Stored Files Found</p>
+                            <p class="slds-text-heading_small slds-m-top_small">No Files Found</p>
                             <p class="slds-text-body_regular slds-text-color_weak slds-m-top_xx-small">
-                                No stored files are available for this record.
+                                No files are available for this record.
                             </p>
                         </div>
                     </template>

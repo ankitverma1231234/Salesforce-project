@@ -1,0 +1,13 @@
+<aura:component 
+    implements="lightning:actionOverride,flexipage:availableForRecordHome,force:hasRecordId">
+
+
+    <aura:attribute name="recordId" type="Id"/>
+
+
+    <c:medicationStatementComp
+        record-id="{!v.recordId}">
+    </c:medicationStatementComp>
+
+
+</aura:component>

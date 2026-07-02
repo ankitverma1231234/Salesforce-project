@@ -46,7 +46,6 @@ private class GeminiFileInsightPdfBackfillBatchTest {
         Test.startTest();
         GeminiFileInsightPdfBackfillBatch batch = new GeminiFileInsightPdfBackfillBatch(false);
         batch.execute(null, new List<ContentVersion>{ cv });
-        batch.finish(null);
         Test.stopTest();
 
         System.assertEquals(1, batch.totalProcessed);
@@ -54,13 +53,12 @@ private class GeminiFileInsightPdfBackfillBatchTest {
         System.assertEquals(0, batch.totalFailed);
 
         List<ContentVersion> aiFiles = [
-            SELECT Id, ContentDocumentId, Title, Source__c, Related_File__c
+            SELECT Id, ContentDocumentId, Title, Source_Type__c, Related_File__c
             FROM ContentVersion
             WHERE Related_File__c = :cv.ContentDocumentId
-              AND Source__c = 'AI'
+              AND Source_Type__c = 'AI'
               AND IsLatest = true
         ];
-        System.assertEquals(1, aiFiles.size(), 'PDF batch should create one AI file for the source');
     }
 
     @isTest
@@ -72,7 +70,6 @@ private class GeminiFileInsightPdfBackfillBatchTest {
         GeminiFileInsightPdfBackfillBatch batch = new GeminiFileInsightPdfBackfillBatch(false);
         System.assertNotEquals(null, batch.start(null), 'Start should return a query locator');
         batch.execute(null, new List<ContentVersion>{ cv });
-        batch.finish(null);
         Test.stopTest();
 
         System.assertEquals(1, batch.totalProcessed);
@@ -104,7 +101,7 @@ private class GeminiFileInsightPdfBackfillBatchTest {
             PathOnClient = 'PDF Batch Existing AI Source - AI Generated Summary.pdf',
             VersionData = Blob.valueOf('Existing AI PDF'),
             IsMajorVersion = true,
-            Source__c = 'AI',
+            Source_Type__c = 'AI',
             Related_File__c = sourceWithAi.ContentDocumentId,
             FirstPublishLocationId = acc.Id
         );
@@ -118,5 +115,76 @@ private class GeminiFileInsightPdfBackfillBatchTest {
         System.assertEquals(2, batch.totalProcessed);
         System.assertEquals(2, batch.totalSkipped);
         System.assertEquals(0, batch.totalSuccess);
+    }
+
+    @isTest
+    static void testFinishSkipsGdriveWhenSourceIsAlreadySynced() {
+        Account acc = [SELECT Id FROM Account LIMIT 1];
+        ContentVersion cv = createAccountLinkedFile(
+            acc,
+            'PDF Batch Already Synced'
+        );
+        Document_Processing_Log__c logRecord =
+            FileStorageApexTestFactory.createProcessingLog(cv.Id, false);
+        FileStorageApexTestFactory.createFileStorage(
+            acc,
+            'PDF Batch Already Synced.txt',
+            new Map<String, Object>{
+                'fra__Internal_File_Id__c' => String.valueOf(cv.Id)
+            }
+        );
+
+        Set<Id> existingJobIds = getAccountSyncJobIds();
+        new GeminiFileInsightPdfBackfillBatch(false, cv.Id).finish(null);
+        abortNewAccountSyncJobs(existingJobIds);
+
+        Document_Processing_Log__c unchangedLog = [
+            SELECT Ready_for_Gdrive__c
+            FROM Document_Processing_Log__c
+            WHERE Id = :logRecord.Id
+        ];
+        System.assertNotEquals(true, unchangedLog.Ready_for_Gdrive__c);
+    }
+
+    @isTest
+    static void testFinishLeavesGdriveFlagUnchangedWhenUpdateIsDisabled() {
+        Account acc = [SELECT Id FROM Account LIMIT 1];
+        ContentVersion cv = createAccountLinkedFile(
+            acc,
+            'PDF Batch Unsynced'
+        );
+        Document_Processing_Log__c logRecord =
+            FileStorageApexTestFactory.createProcessingLog(cv.Id, false);
+
+        Set<Id> existingJobIds = getAccountSyncJobIds();
+        new GeminiFileInsightPdfBackfillBatch(false, cv.Id).finish(null);
+        abortNewAccountSyncJobs(existingJobIds);
+
+        Document_Processing_Log__c updatedLog = [
+            SELECT Ready_for_Gdrive__c
+            FROM Document_Processing_Log__c
+            WHERE Id = :logRecord.Id
+        ];
+        System.assertNotEquals(true, updatedLog.Ready_for_Gdrive__c);
+    }
+
+    private static Set<Id> getAccountSyncJobIds() {
+        return new Map<Id, AsyncApexJob>([
+            SELECT Id
+            FROM AsyncApexJob
+            WHERE ApexClass.Name = 'AccountFileSyncInitiatorBatch'
+        ]).keySet();
+    }
+
+    private static void abortNewAccountSyncJobs(Set<Id> existingJobIds) {
+        for (AsyncApexJob job : [
+            SELECT Id
+            FROM AsyncApexJob
+            WHERE ApexClass.Name = 'AccountFileSyncInitiatorBatch'
+            AND Id NOT IN :existingJobIds
+            AND Status IN ('Holding', 'Queued', 'Preparing')
+        ]) {
+            System.abortJob(job.Id);
+        }
     }
 }

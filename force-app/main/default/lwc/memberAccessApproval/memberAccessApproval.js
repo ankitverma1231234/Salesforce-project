@@ -17,7 +17,7 @@ export default class MemberAccessApproval extends LightningElement {
     @track errorMessage     = '';
     @track successMessage   = '';
 
-    @track childName        = '';
+    @track grantingMemberName = '';
 
     @track verificationCode = '';
 
@@ -35,8 +35,8 @@ export default class MemberAccessApproval extends LightningElement {
 
         validateMemberToken({ token: this.token })
             .then((info) => {
-              
-                this.childName = info.authorizedFullName || 'A family member';
+                this.grantingMemberName = info.authorizedFullName
+                    || 'A family member';
 
                 if (info.alreadyProcessed) {
                     this.state        = STATE.ALREADY;

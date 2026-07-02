@@ -3,7 +3,6 @@
         <div class="aaa-card">
             <header class="aaa-header">
                 <h1>Authorized Account Access</h1>
-                <p>Accept or deny the request below to manage your BatonCare account.</p>
             </header>
 
             <!-- LOADING -->
@@ -17,15 +16,15 @@
             <template if:true={showForm}>
                 <div class="aaa-summary">
                     <p>
-                        <!-- Jane is giving Daniel access → show Jane's name -->
-                        <strong>{childName}</strong> is giving you access to their BatonCare account.
-                        With this access, you may view and manage their account information on their behalf,
-                        as well as view their past, present, or future health information, including billing
-                        and medical records. This may include sensitive information such as mental and
-                        behavioral health information, alcohol and drug abuse information, HIV/AIDS
-                        information, and genetic information protected under HIPAA and, where applicable,
-                        42 C.F.R. Part 2.
-                    </p>
+                    <strong>{grantingMemberName}</strong> is granting you access to their BatonCare account. This may include sensitive health 
+                    information protected under HIPAA and, where applicable, 42 C.F.R. Part 2.
+                </p>
+                <p>
+                    If any of the information disclosed under this authorization is protected by the
+                    federal confidentiality rules for substance use disorder (SUD) information
+                    under 42 C.F.R. Part 2, that information may not be redisclosed by the recipient without
+                    written authorization unless such redisclosure is otherwise permitted by 42 C.F.R. Part 2.
+                </p>
                 </div>
 
                 <div class="aaa-field">

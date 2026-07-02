@@ -1,14 +1,255 @@
-.afu-modal-body {
-    min-height: 8rem;
-    position: relative;
+/* ─── Modal Container ────────────────────────────────────────────────────── */
+.upload-modal .slds-modal__container,
+.upload-modal-container {
+    max-width: 680px;
+    width: 95vw;
+    border-radius: 12px;
+    overflow: hidden;
 }
 
-.afu-spinner-wrap {
-    position: absolute;
-    inset: 0;
-    background-color: rgba(255, 255, 255, 0.6);
+/* ─── Modal Header ───────────────────────────────────────────────────────── */
+.upload-modal-header {
+    background: linear-gradient(135deg, #1b5fad 0%, #0e3d7a 100%);
+    padding: 20px 24px 16px;
+    border-bottom: none;
+}
+
+.modal-header-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.modal-header-icon {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 9001;
+}
+
+.modal-header-icon lightning-icon {
+    --sds-c-icon-color-foreground-default: #ffffff;
+}
+
+.upload-modal-header .slds-modal__title {
+    color: #ffffff;
+    font-size: 1.125rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.modal-subtitle {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.8125rem;
+    margin: 0;
+    padding-left: 36px;
+    line-height: 1.4;
+}
+
+/* ─── Modal Body ─────────────────────────────────────────────────────────── */
+.upload-modal-body {
+    background: #f8f9fb;
+    max-height: 65vh;
+    overflow-y: auto;
+    padding: 20px 24px;
+    position: relative;
+}
+
+/* ─── Upload Zone ────────────────────────────────────────────────────────── */
+.upload-zone {
+    background: #ffffff;
+    border: 2px dashed #c9d5e3;
+    border-radius: 10px;
+    padding: 8px 16px 16px;
+    text-align: center;
+    transition: border-color 0.2s ease, background 0.2s ease;
+    margin-bottom: 16px;
+    position: relative;
+}
+
+.upload-zone:hover {
+    border-color: #1b5fad;
+    background: #f0f5ff;
+}
+
+.upload-zone-hint {
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 0 8px;
+    opacity: 0.6;
+}
+
+.upload-hint-text {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #3e4e63;
+    margin: 0;
+}
+
+.upload-hint-sub {
+    font-size: 0.75rem;
+    color: #7a8a9b;
+    margin: 0;
+}
+
+/* ─── Section Divider ────────────────────────────────────────────────────── */
+.section-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.section-divider::before,
+.section-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #dde3ec;
+}
+
+.section-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #7a8a9b;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+}
+
+/* ─── File Metadata Card ─────────────────────────────────────────────────── */
+.file-metadata-card {
+    background: #ffffff;
+    border: 1px solid #dde3ec;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+.file-metadata-card:last-child {
+    margin-bottom: 0;
+}
+
+.file-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: #f0f4fa;
+    border-bottom: 1px solid #dde3ec;
+}
+
+.file-card-icon {
+    flex-shrink: 0;
+}
+
+.file-original-name {
+    flex: 1;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #1b2533;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-size-badge {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: #6b7d96;
+    background: #e2e8f2;
+    border-radius: 20px;
+    padding: 2px 8px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ─── Metadata Fields Grid ───────────────────────────────────────────────── */
+.file-metadata-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    padding: 16px;
+    gap: 12px 16px;
+}
+
+.metadata-field {
+    grid-column: span 1;
+}
+
+.metadata-field_full {
+    grid-column: span 2;
+}
+
+/* Tighten up the SLDS input labels */
+.metadata-input .slds-form-element__label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #5a6c82;
+    margin-bottom: 4px;
+}
+
+/* ─── Saving Overlay ─────────────────────────────────────────────────────── */
+.saving-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(248, 249, 251, 0.88);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    z-index: 10;
+    border-radius: 0 0 12px 12px;
+}
+
+.saving-text {
+    font-size: 0.875rem;
+    color: #3e4e63;
+    font-weight: 500;
+    margin: 0;
+}
+
+/* ─── Modal Footer ───────────────────────────────────────────────────────── */
+.upload-modal-footer {
+    background: #ffffff;
+    border-top: 1px solid #dde3ec;
+    padding: 14px 24px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+}
+
+/* ─── Scrollbar styling ──────────────────────────────────────────────────── */
+.upload-modal-body::-webkit-scrollbar {
+    width: 6px;
+}
+.upload-modal-body::-webkit-scrollbar-track {
+    background: #f0f2f5;
+    border-radius: 3px;
+}
+.upload-modal-body::-webkit-scrollbar-thumb {
+    background: #c5cdd9;
+    border-radius: 3px;
+}
+.upload-modal-body::-webkit-scrollbar-thumb:hover {
+    background: #9daab9;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 500px) {
+    .file-metadata-fields {
+        grid-template-columns: 1fr;
+    }
+    .metadata-field_full {
+        grid-column: span 1;
+    }
 }

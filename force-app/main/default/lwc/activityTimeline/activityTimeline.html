@@ -2,120 +2,131 @@
     <lightning-card title="BatonCare Activity Timeline" icon-name="standard:log_a_call">
         <!-- Filters -->
         <div class="slds-p-around_small filters slds-grid slds-wrap">
-            <div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
-                 <div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
-            <lightning-icon icon-name="standard:email" size="x-small" class="slds-m-right_x-small"></lightning-icon>
-                <lightning-input type="checkbox" label="Emails" name="Email" checked={filters.Email} onchange={handleFilterChange}></lightning-input>
-            </div>
-             <!-- Messaging Shassion -->
-             <div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
-                <!-- <template if:true={filters.MessagingSession}>
-               
-                     <lightning-icon icon-name='action:new_custom31' alternative-text='new_custom31' size='xx-small' title='new_custom31'></lightning-icon>
-                </template> -->
-               
-                  <lightning-icon icon-name='standard:coaching' alternative-text='coaching' size='x-small' title='coaching' class="slds-m-right_xx-small"></lightning-icon>
-                <lightning-input type="checkbox" label="Message Session" name="MessagingSession" checked={filters.MessagingSession} onchange={handleFilterChange}></lightning-input>
-            </div>  
 
             <div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
+                <lightning-input type="checkbox" name="Email" checked={filters.Email} onchange={handleFilterChange} class="filter-checkbox"></lightning-input>
+                <lightning-icon icon-name="standard:email" size="x-small" class="slds-m-right_x-small"></lightning-icon>
+                <span>Emails</span>
+            </div>
+
+            <div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
+                <lightning-input type="checkbox" name="MessagingSession" checked={filters.MessagingSession} onchange={handleFilterChange} class="filter-checkbox"></lightning-input>
+                <lightning-icon icon-name="standard:coaching" alternative-text="coaching" size="x-small" title="coaching" class="slds-m-right_xx-small"></lightning-icon>
+                <span>Message Session</span>
+            </div>
+
+            <div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
+                <lightning-input type="checkbox" name="Call" checked={filters.Call} onchange={handleFilterChange} class="filter-checkbox"></lightning-input>
                 <lightning-icon icon-name="standard:log_a_call" size="x-small" class="slds-m-right_x-small"></lightning-icon>
-                <lightning-input type="checkbox" label="Log a Call" name="Call" checked={filters.Call} onchange={handleFilterChange}></lightning-input>
+                <span>Log a Call</span>
             </div>
 
+            <div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
+                <lightning-input type="checkbox" name="Task" checked={filters.Task} onchange={handleFilterChange} class="filter-checkbox"></lightning-input>
                 <lightning-icon icon-name="standard:task" size="x-small" class="slds-m-right_x-small"></lightning-icon>
-                <lightning-input type="checkbox" label="Tasks" name="Task" checked={filters.Task} onchange={handleFilterChange}></lightning-input>
+                <span>Tasks</span>
             </div>
 
             <div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
-             <lightning-icon icon-name='standard:case_change_status' alternative-text='case_change_status' size='x-small' title='case_change_status' class="slds-m-right_x-small"></lightning-icon>
-                <lightning-input type="checkbox" label="Metriport Cases" name="MetriportCases" checked={filters.MetriportCases} onchange={handleFilterChange}></lightning-input>
+                <lightning-input type="checkbox" name="MetriportCases" checked={filters.MetriportCases} onchange={handleFilterChange} class="filter-checkbox"></lightning-input>
+                <lightning-icon icon-name="standard:case_change_status" alternative-text="case_change_status" size="x-small" title="case_change_status" class="slds-m-right_x-small"></lightning-icon>
+                <span>Metriport Cases</span>
             </div>
 
             <div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
+                <lightning-input type="checkbox" name="PortalMessages" checked={filters.PortalMessages} onchange={handleFilterChange} class="filter-checkbox"></lightning-input>
                 <lightning-icon icon-name="standard:case" size="x-small" class="slds-m-right_x-small"></lightning-icon>
-                <lightning-input type="checkbox" label="Portal Messages" name="PortalMessages" checked={filters.PortalMessages} onchange={handleFilterChange}></lightning-input>
+                <span>Portal Messages</span>
             </div>
 
             <div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
+                <lightning-input type="checkbox" name="Event" checked={filters.Event} onchange={handleFilterChange} class="filter-checkbox"></lightning-input>
                 <lightning-icon icon-name="standard:event" size="x-small" class="slds-m-right_x-small"></lightning-icon>
-                <lightning-input type="checkbox" label="Events" name="Event" checked={filters.Event} onchange={handleFilterChange}></lightning-input>
+                <span>Events</span>
             </div>
-            
- 
+
             <!-- Call History -->
             <div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
+                <lightning-input type="checkbox" name="CallHistory" checked={filters.CallHistory} onchange={handleFilterChange} class="filter-checkbox"></lightning-input>
                 <template if:true={filters.CallHistory}>
                     <img src={VoiceCallIcon} alt="Call History Icon" class="custom-icon slds-m-right_x-small" />
                 </template>
-                <lightning-input
-                    type="checkbox"
-                    label="Call History"
-                    name="CallHistory"
-                    checked={filters.CallHistory}
-                    onchange={handleFilterChange}>
-                </lightning-input>
+                <span>Call History</span>
             </div>
 
             <!-- AI Call History -->
             <div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
-                <lightning-icon icon-name='standard:call' alternative-text='call' size='x-small' title='call' class="slds-m-right_x-small"></lightning-icon>
-                <lightning-input
-                    type="checkbox"
-                    label="AI Call History"
-                    name="AiCallHistory"
-                    checked={filters.AiCallHistory}
-                    onchange={handleFilterChange}>
-                </lightning-input>
+                <lightning-input type="checkbox" name="AiCallHistory" checked={filters.AiCallHistory} onchange={handleFilterChange} class="filter-checkbox"></lightning-input>
+                <lightning-icon icon-name="standard:call" alternative-text="call" size="x-small" title="call" class="slds-m-right_x-small"></lightning-icon>
+                <span>AI Call History</span>
             </div>
 
+           <!-- Sent & Received Fax -->
+<div class="slds-m-right_medium slds-grid slds-grid_vertical-align-center">
+    <lightning-input
+        type="checkbox"
+        name="Fax"
+        checked={filters.Fax}
+        onchange={handleFilterChange}
+        class="filter-checkbox">
+    </lightning-input>
+    <lightning-icon 
+        icon-name="doctype:overlay"
+        alternative-text="Fax"
+        size="x-small" 
+        title="Fax"
+        class="slds-m-right_x-small">
+    </lightning-icon>
+    <span>Sent &amp; Received Fax</span>
+</div>
 
         </div>
 
-                 <!-- Timeline list -->
-                    <template if:true={filteredActivities}>
-                        <ul class="slds-timeline">
-                            <template for:each={filteredActivities} for:item="act">
-                                <li key={act.recordId} class="slds-timeline__item">
-                                    <div class="slds-media">
-                                        <div class="slds-media__figure">   
-                                            <template if:true={act.iconName}>
-                                                <lightning-icon icon-name={act.iconName} size="small"></lightning-icon>
-                                            </template>
-                                            <template if:true={act.iconUrl}>
-                                                <img src={act.iconUrl} alt={act.type} class="custom-icon-small"/>
-                                            </template>
-                                        </div>
-
-                                        <div class="slds-media__body">
-                                            <p>
-                                                <a href="javascript:void(0)" 
-                                                data-id={act.recordId} 
-                                                data-type={act.type} 
-                                                onclick={handleClick}>
-                                                    {act.title}
-                                                </a>
-                                            </p>
-                                            <!-- <p>{act.field1} — {act.field2}</p> -->
-                                             <p>{act.field1}</p>
-                                            <p>{act.field2}</p>
-                                            <p>Created: {act.formattedDate}</p>
-                                        </div>
-                                    </div>
-                                </li>
-                            </template>
-                        </ul>
-
-                <!-- View More -->
-                <template if:false={allLoaded}>
-                    <div class="slds-p-around_small">
-                        <lightning-button variant="neutral" label="View More" onclick={loadActivities}></lightning-button>
-                    </div>
-                </template>
-            </template>
-
-            <template if:false={filteredActivities}>
-                <p class="slds-p-around_medium">No activities found</p>
-            </template>
-        </lightning-card>
+        <!-- Timeline list -->
+        <template if:true={filteredActivities}>
+            <ul class="slds-timeline">
+                <template for:each={filteredActivities} for:item="act">
+                    <li key={act.recordId} class="slds-timeline__item">
+                        <div class="slds-media">
+                            <div class="slds-media__figure">
+    <template if:true={act.iconUrl}>
+        <img src={act.iconUrl} alt={act.type} class="custom-icon-small" />
     </template>
+    <template if:false={act.iconUrl}>
+        <lightning-icon icon-name={act.iconName} size="small"></lightning-icon>
+    </template>
+</div>
+                            <div class="slds-media__body">
+                                <p>
+                                    <a href="javascript:void(0)" data-id={act.recordId} data-type={act.type} onclick={handleClick}>
+                                        {act.title}
+                                    </a>
+                                </p>
+                                <p>{act.field1}</p>
+                                <p>{act.field2}</p>
+                                <template if:false={act.isFax}>
+    <p>Created: {act.formattedDate}</p>
+</template>
+<template if:true={act.isFax}>
+    <p>{act.formattedDate}</p>
+</template>
+                            </div>
+                        </div>
+                    </li>
+                </template>
+            </ul>
+
+            <!-- View More -->
+            <template if:false={allLoaded}>
+                <div class="slds-p-around_small">
+                    <lightning-button variant="neutral" label="View More" onclick={loadActivities}></lightning-button>
+                </div>
+            </template>
+        </template>
+
+        <template if:false={filteredActivities}>
+            <p class="slds-p-around_medium">No activities found</p>
+        </template>
+
+    </lightning-card>
+</template>

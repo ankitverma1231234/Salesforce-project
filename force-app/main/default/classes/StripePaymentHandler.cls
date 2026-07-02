@@ -12,22 +12,31 @@ public class StripePaymentHandler {
         }
     }
     
-   // Helper method to get automated user - testable
+    
     @TestVisible
     private static User getAutomatedUser() {
         User automatedUser = null;
         
         if (Test.isRunningTest()) {
-            // In test context, return any active admin user
             List<User> users = [SELECT Id FROM User WHERE Profile.Name = 'System Administrator' AND IsActive = true LIMIT 1];
             if (!users.isEmpty()) {
                 automatedUser = users[0];
             }
         } else {
-            // In production, use your specific user
-            List<User> users = [SELECT Id FROM User WHERE Username = 'autoproc@00dkc000000j2romac' AND IsActive = true LIMIT 1];
-            if (!users.isEmpty()) {
-                automatedUser = users[0];
+            BatonPortalAPI__c settings = BatonPortalAPI__c.getOrgDefaults();
+            String automatedUserName = settings?.Automated_User_Names__c;
+            if (String.isNotBlank(automatedUserName)) {
+                List<User> users = [
+                    SELECT Id FROM User 
+                    WHERE Name = :automatedUserName
+                    AND IsActive = true 
+                    LIMIT 1
+                ];
+                if (!users.isEmpty()) {
+                    automatedUser = users[0];
+                }
+            } else {
+                System.debug('BatonPortalAPI__c Automated_User_Names__c is not configured.');
             }
         }
         if (automatedUser == null) {
@@ -36,7 +45,7 @@ public class StripePaymentHandler {
         
         return automatedUser;
     }
-
+    
     public static Result processChargeSucceeded(Map<String, Object> charge) {
         try {
             Boolean paid = (Boolean) charge.get('paid');
@@ -45,7 +54,7 @@ public class StripePaymentHandler {
             if (paid != true || status != 'succeeded') {
                 return new Result(false, 'Charge not successful.');
             }
-
+            
             String paymentIntentId = (String) charge.get('payment_intent');
             String chargeId = (String) charge.get('id');
             
@@ -103,12 +112,11 @@ public class StripePaymentHandler {
                 }
             }
             
-            // Use the helper method instead of direct query
+            
             User automatedUser = getAutomatedUser(); 
-            //Check if Person Account already exists by Customer ID
             Account account = null;
             if (!String.isBlank(stripeCustomerId)) {
-                String customerUrl = 'https://dashboard.stripe.com/customers/' + stripeCustomerId;
+                String customerUrl = System.Label.Stripe_URL + stripeCustomerId;
                 List<Account> existingStripeAccount = [
                     SELECT Id, FirstName, LastName, Email__c,PersonEmail, Stripe_Account_Id__c, 
                     Invoice_Id__c, Customer_Id__c, RecordType.DeveloperName
@@ -141,13 +149,12 @@ public class StripePaymentHandler {
                     txn.Mode__c = 'subscription';
                     txn.Payment_Link__c = paymentLinkUrl;
                     txn.Payment_ID__c = paymentIntentId;
-
+                    
                     insert txn;  
                     return new Result(true, 'Stripe Transaction created for existing Person Account.');
                 }
             }
             
-            // Verify Person Account Record Type exists before creating new account
             Map<String, Schema.RecordTypeInfo> rtMap = Schema.SObjectType.Account.getRecordTypeInfosByDeveloperName();
             if (!rtMap.containsKey('PersonAccount')) {
                 throw new AuraHandledException('PersonAccount Record Type not available. Account creation blocked.');
@@ -161,7 +168,7 @@ public class StripePaymentHandler {
             account.OwnerId = automatedUser.Id;
             account.RecordTypeId = personAccountRecordTypeId; 
             if (!String.isBlank(stripeCustomerId)) {
-                account.Customer_Id__c = 'https://dashboard.stripe.com/customers/' + stripeCustomerId;
+                account.Customer_Id__c = System.Label.Stripe_URL + stripeCustomerId;
             }
             
             if (addressMap != null) {
@@ -177,7 +184,7 @@ public class StripePaymentHandler {
             }
             
             insert account;
-
+            
             if (account != null && account.Id != null) {
                 Map<String, Schema.RecordTypeInfo> oppRtMap = Schema.SObjectType.Opportunity.getRecordTypeInfosByDeveloperName();
                 if (!oppRtMap.containsKey('Patient_Referral')) {
@@ -186,9 +193,9 @@ public class StripePaymentHandler {
                 }
                 
                 Id oppRecordTypeId = oppRtMap.get('Patient_Referral').getRecordTypeId();
-
+                
                 Opportunity opp = new Opportunity();
-                opp.Name = planName + ' - Referral';
+                opp.Name = (!String.isBlank(planName) ? planName : 'Subscription') + ' - Referral';
                 opp.AccountId = account.Id;
                 opp.StageName = 'Closed Won';
                 opp.CloseDate = system.today();
@@ -222,7 +229,7 @@ public class StripePaymentHandler {
         Integer maxAttempts = 5;
         Integer waitTimeMs = 2000; 
         Map<String, Object> eventObject;
-
+        
         if (eventObj instanceof String) {
             try {
                 eventObject = (Map<String, Object>) JSON.deserializeUntyped((String) eventObj);
@@ -234,7 +241,7 @@ public class StripePaymentHandler {
         } else {
             return new Result(false, 'Invalid event object type.');
         }
-
+        
         try {
             Map<String, Object> dataObject;
             if (eventObject.containsKey('data') && eventObject.get('data') != null) {
@@ -243,14 +250,14 @@ public class StripePaymentHandler {
             } else {
                 dataObject = eventObject;
             }
-
+            
             Map<String, Object> linesMap = (Map<String, Object>) dataObject.get('lines');
             List<Object> dataLines = (List<Object>) linesMap.get('data');
             Map<String, Object> firstLine = (Map<String, Object>) dataLines[0];
             Map<String, Object> parentMap = (Map<String, Object>) firstLine.get('parent');
             Map<String, Object> subscriptionItemDetails = (Map<String, Object>) parentMap.get('subscription_item_details');
             String subscriptionId = (String) subscriptionItemDetails.get('subscription');
-
+            
             // Retry loop to find Opportunity
             List<Opportunity> opportunities = new List<Opportunity>();
             for (Integer attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -261,24 +268,24 @@ public class StripePaymentHandler {
                     AND Subscription_Id__c = :subscriptionId 
                     LIMIT 1
                 ];
-
+                
                 if (!opportunities.isEmpty()) {
                     break;
                 }
-
+                
                 if (attempt < maxAttempts && !Test.isRunningTest()) {
                     System.debug('No Opportunity found, retrying in ' + waitTimeMs + 'ms...');
                     Long startTime = System.now().getTime();
                     while (System.now().getTime() - startTime < waitTimeMs) {
-                    
+                        
                     }
                 }
             }
-
+            
             if (opportunities.isEmpty()) {
                 return new Result(false, 'No Opportunity found with Subscription ID: ' + subscriptionId);
             }
-
+            
             List<Stripe_Transaction__c> stripeTransactions = [
                 SELECT Id 
                 FROM Stripe_Transaction__c 
@@ -286,20 +293,20 @@ public class StripePaymentHandler {
                 AND Opportunity__c = null
                 LIMIT 1
             ];
-
+            
             if (stripeTransactions.isEmpty()) {
                 return new Result(true, 'No Stripe Transaction found — skipping update.');
             }
             stripeTransactions[0].Opportunity__c = opportunities[0].Id;
             update stripeTransactions[0];
-
+            
             return new Result(true, 'Successfully updated Stripe Transaction');
-
+            
         } catch (Exception ex) {
             return new Result(false, 'Error: ' + ex.getMessage());
         }
     }
-
+    
     public static Result processInvoicePaymentWithRetry(Map<String, Object> session) {
         Result res = new Result();
         Integer maxAttempts = 5;
@@ -311,8 +318,8 @@ public class StripePaymentHandler {
             String subscriptionId = (String) session.get('subscription');
             String paymentMode = (String) session.get('mode');
             String paymentStatus = (String) session.get('payment_status');
+            String sessionId      = (String) session.get('id');
             
-            // Extract metadata
             String planName = null;
             String stripeAccountId = null;
             if (session.containsKey('metadata') && session.get('metadata') != null) {
@@ -342,12 +349,11 @@ public class StripePaymentHandler {
                 return res;
             }
             
-            String customerUrl = 'https://dashboard.stripe.com/customers/' + customerId;
+            String customerUrl = System.Label.Stripe_URL + customerId;
             Account account = null;
             for (Integer attempt = 1; attempt <= maxAttempts; attempt++) {
                 System.debug('Attempt ' + attempt + ' of ' + maxAttempts + ' to find Account');
                 
-                // Try finding by Customer ID
                 List<Account> accounts = [
                     SELECT Id, Invoice_Id__c, Phone,PersonMobilePhone, Stripe_Account_Id__c
                     FROM Account
@@ -363,7 +369,6 @@ public class StripePaymentHandler {
                     break;
                 }
                 
-                // Wait before next attempt (except on last attempt)
                 if (attempt < maxAttempts && !Test.isRunningTest()) {
                     System.debug('Account not found, waiting before retry...');
                     Long startTime = System.now().getTime();
@@ -379,7 +384,7 @@ public class StripePaymentHandler {
                 return res;
             }
             
-            // Update Account Invoice_Id__c and Phone if available
+            
             Boolean accountNeedsUpdate = false;
             if (!String.isBlank(invoiceId)) {
                 account.Invoice_Id__c = invoiceId;
@@ -391,6 +396,11 @@ public class StripePaymentHandler {
             }
             if (!String.isBlank(stripeAccountId) && String.isBlank(account.Stripe_Account_Id__c)) {
                 account.Stripe_Account_Id__c = stripeAccountId;
+                accountNeedsUpdate = true;
+            }
+            
+            if (!String.isBlank(sessionId)) {
+                account.Stripe_Session_Id__c = sessionId;
                 accountNeedsUpdate = true;
             }
             
@@ -407,7 +417,7 @@ public class StripePaymentHandler {
                 LIMIT 1
             ];
             
-            // Update existing Opportunity name with Plan Name and Subscription ID if found
+            
             if (!existingOpps.isEmpty()) {
                 Opportunity opp = existingOpps[0];
                 
@@ -428,7 +438,7 @@ public class StripePaymentHandler {
                 update opp;
             }
             
-            // Query the latest Stripe_Transaction__c record linked to this Account
+            
             List<Stripe_Transaction__c> txns = [
                 SELECT Id, Payment_ID__c, Mode__c, Payment_Link__c, Payment_Status__c
                 FROM Stripe_Transaction__c

@@ -10,6 +10,7 @@ public Without Sharing class FileUpsertHelper {
 
         List<ContentVersion> toInsert = new List<ContentVersion>();
         List<ContentVersion> toUpdate = new List<ContentVersion>();
+        List<String>         fileRangerCVIds = new List<String>();
 
         Map<Integer, Map<String, Object>> insertIndexMap = new Map<Integer, Map<String, Object>>();
 
@@ -18,6 +19,7 @@ public Without Sharing class FileUpsertHelper {
             if(recData == null) continue;
 
             String id = (String)recData.get('id');
+            String recordId = (String)recData.get('recordid');
             Object deleteFlag = recData.get('is_deleted');
             
             Boolean isDelete = false;
@@ -26,6 +28,13 @@ public Without Sharing class FileUpsertHelper {
                 isDelete = (deleteFlag instanceof Boolean)
                     ? (Boolean) deleteFlag
                     : String.valueOf(deleteFlag).toLowerCase() == 'true';
+            }
+            
+            if(!String.isBlank(recordId) && isDelete){
+                fileRangerCVIds.add(recordId);
+                recData.put('success', true);
+                recData.put('message', 'File Storage checkbox will be unchecked');
+                resultData.add(recData);
             }
 
             if(!String.isBlank(id)){
@@ -50,7 +59,6 @@ public Without Sharing class FileUpsertHelper {
             String accountId   = (String)recData.get('Accountid');
             String description = (String)recData.get('description');
             String createdDateStr = (String)recData.get('created_date');
-            String documentType   = (String)recData.get('document_type');
             String sourceType     = (String)recData.get('source_type');
             String category      = (String)recData.get('category');
             
@@ -92,7 +100,6 @@ public Without Sharing class FileUpsertHelper {
             cv.FirstPublishLocationId = accountId;
             cv.Send_File_to_Portal__c = !isDelete;
             cv.Service_Date_Time__c = date_time;
-            cv.Document_Type__c        = documentType;
             cv.Source_Type__c          = sourceType;
             cv.Category__c             = category;
 
@@ -131,6 +138,21 @@ public Without Sharing class FileUpsertHelper {
 
         if(!toUpdate.isEmpty()){
             update toUpdate;
+        }
+        
+        if(!fileRangerCVIds.isEmpty()){
+            List<fra__File_Storage__c> fileRangerRecords = [
+                SELECT Id, Send_to_Portal__c
+                FROM fra__File_Storage__c
+                WHERE Id IN :fileRangerCVIds];
+            
+       for(fra__File_Storage__c fr : fileRangerRecords){
+                fr.Send_to_Portal__c = false;
+            }
+
+            if(!fileRangerRecords.isEmpty()){
+                update fileRangerRecords;
+            }
         }
 
         return resultData;

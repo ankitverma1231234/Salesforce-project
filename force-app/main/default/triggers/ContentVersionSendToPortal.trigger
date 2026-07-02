@@ -1,6 +1,6 @@
 trigger ContentVersionSendToPortal on ContentVersion (after insert, after update) {
     
-  if (Trigger.isAfter && Trigger.isInsert) {
+/*  if (Trigger.isAfter && Trigger.isInsert) {
         Set<Id> contentDocIds = new Set<Id>();
         for (ContentVersion cv : Trigger.new) {
             if (cv.ContentDocumentId != null) {
@@ -115,5 +115,5 @@ trigger ContentVersionSendToPortal on ContentVersion (after insert, after update
         if (!deletedFileIds.isEmpty() && !Test.isRunningTest()) {
             MedicalSalesforceDeleteRecord.deleteRecordFromThirdParty(deletedFileIds, 'ContentVersion');
         }
-    }     
+    }     */
 }

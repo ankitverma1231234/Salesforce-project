@@ -10,10 +10,12 @@ public without sharing class MemberAccessApprovalController {
 
         List<Account_head_relationship__c> recs = [
             SELECT Id,
-                   Portal_Access_Status__c,
-                   Token_Expiry__c,
-                   Authorized_Account_Access__r.FirstName,
-                   Authorized_Account_Access__r.LastName
+            Portal_Access_Status__c,
+            Token_Expiry__c,
+            Member_Account__r.Name,
+            Member_Account__r.FirstName,
+            Member_Account__r.LastName,
+            Authorized_Account_Access__r.Name
             FROM   Account_head_relationship__c
             WHERE  Approval_Token__c = :token
             LIMIT  1
@@ -27,11 +29,11 @@ public without sharing class MemberAccessApprovalController {
         info.expired            = r.Token_Expiry__c == null || r.Token_Expiry__c < Datetime.now();
         info.alreadyProcessed   = r.Portal_Access_Status__c != STATUS_PENDING;
 
-        // Jane = Authorized_Account_Access__r — she is giving Daniel access
-        info.authorizedFullName = r.Authorized_Account_Access__r != null
-            ? ((r.Authorized_Account_Access__r.FirstName ?? '') + ' '
-               + (r.Authorized_Account_Access__r.LastName  ?? '')).trim()
-            : '';
+       
+        info.authorizedFullName = r.Member_Account__r != null
+        ? ((r.Member_Account__r.FirstName ?? '') + ' '
+        + (r.Member_Account__r.LastName  ?? '')).trim()
+        : '';
 
         return info;
     }

@@ -20,11 +20,11 @@ public class ContentDocumentPrepareQueueable implements Queueable {
                    Description,
                    Date__c,
                    Organization_Name__c,
-                   Source__c,
+                   Source_Type__c,
                    CreatedDate
             FROM ContentVersion
             WHERE ContentDocumentId IN :contentDocumentIds
-              AND Source__c = 'Metriport'
+              AND Source_Type__c = 'Metriport'
         ]) {
             if (!docToVersionMap.containsKey(cv.ContentDocumentId)) {
                 docToVersionMap.put(cv.ContentDocumentId, cv);

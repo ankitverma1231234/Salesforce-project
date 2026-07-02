@@ -7,7 +7,6 @@ private class FileStorageContentBackfillBatchTest {
 
         System.assertNotEquals(null, batchInstance.start(null));
         batchInstance.execute(null, new List<fra__File_Storage__c>());
-        batchInstance.finish(null);
     }
 
     @IsTest
@@ -63,7 +62,6 @@ private class FileStorageContentBackfillBatchTest {
         FileStorageContentVersionBackfillBatch batchInstance =
             new FileStorageContentVersionBackfillBatch();
         batchInstance.execute(null, scope);
-        batchInstance.finish(null);
 
         fra__File_Storage__c updatedSource = [
             SELECT Source_Type__c, Category__c, Service_Date_Time__c,

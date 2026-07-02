@@ -40,7 +40,7 @@ private class FileAutoLinkToAccountTest {
             Title = 'Test File',
             PathOnClient = 'TestFile.txt',
             VersionData = Blob.valueOf('Test Data'),
-            Source__c='Metriport',
+            Source_Type__c='Metriport',
             IsMajorVersion = true
         );
         insert cv;
@@ -102,7 +102,7 @@ private class FileAutoLinkToAccountTest {
             Title = 'Null Test File',
             PathOnClient = 'NullTest.txt',
             VersionData = Blob.valueOf('Test Data'),
-            Source__c='Metriport',
+            Source_Type__c='Metriport',
             IsMajorVersion = true
         );
         insert cv;
@@ -158,7 +158,7 @@ private class FileAutoLinkToAccountTest {
             Title = 'Bulk File',
             PathOnClient = 'Bulk.txt',
             VersionData = Blob.valueOf('Bulk Data'),
-            Source__c='Metriport',
+            Source_Type__c='Metriport',
             IsMajorVersion = true
         );
         insert cv;

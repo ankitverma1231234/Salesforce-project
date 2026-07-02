@@ -3,12 +3,11 @@ global class ContentVersionSourceTypeBatch implements Database.Batchable<SObject
     global Database.QueryLocator start(Database.BatchableContext bc) {
         return Database.getQueryLocator([
             SELECT Id,
-            Source__c,
             Source_Type__c,
             FirstPublishLocationId
             FROM   ContentVersion
-            WHERE  Source__c != null
-            AND    Source__c = 'Metriport'
+            WHERE  Source_Type__c != null
+            AND    Source_Type__c = 'Metriport'
         ]);
     }
     

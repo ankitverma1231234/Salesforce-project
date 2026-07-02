@@ -89,7 +89,7 @@ global with sharing class MetriportWebhookHandler {
             //System.enqueueJob(new MedicationDispenseJob(patientJson));
 
             
-           System.enqueueJob(new MetriportPatientDocumentQueueable(patientJson));
+           System.enqueueJob(new MedicationRequestJob(patientJson));
             
             
 

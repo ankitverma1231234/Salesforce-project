@@ -90,6 +90,9 @@
                                 data={previewRecords}
                                 columns={columns}
                                 selected-rows={selectedRowIds}
+                                sorted-by={sortBy}
+                                sorted-direction={sortDirection}
+                                onsort={handleSort}
                                 onrowselection={handleRowSelection}
                                 onrowaction={handleRowAction}>
                             </lightning-datatable>

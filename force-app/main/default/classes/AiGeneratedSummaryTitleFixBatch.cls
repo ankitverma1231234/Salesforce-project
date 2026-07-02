@@ -10,7 +10,7 @@ public class AiGeneratedSummaryTitleFixBatch implements Database.Batchable<SObje
         return Database.getQueryLocator([
             SELECT Id, Title
             FROM ContentVersion
-            WHERE Source__c = 'metriport'
+            WHERE Source_Type__c = 'Metriport'
             AND Send_File_to_Portal__c = true
             AND FirstPublishLocationId IN (SELECT Id FROM Account)
         ]);

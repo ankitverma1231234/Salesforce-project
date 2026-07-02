@@ -135,6 +135,34 @@ public class MedicalRecordsUpdateTest {
         return mp;
     }
 
+    private static Id getAnyVaccineCodeId() {
+        List<CodeSetBundle> namedCodes = [
+            SELECT Id
+            FROM CodeSetBundle
+            WHERE Name = 'Test Vaccine'
+            LIMIT 1
+        ];
+        if (!namedCodes.isEmpty()) return namedCodes[0].Id;
+
+        List<CodeSetBundle> anyCodes = [SELECT Id FROM CodeSetBundle LIMIT 1];
+        return anyCodes.isEmpty() ? null : anyCodes[0].Id;
+    }
+
+    private static PatientImmunization getOrCreatePatientImmunization(Id patientId) {
+        Id vaccineCodeId = getAnyVaccineCodeId();
+        System.assertNotEquals(null, vaccineCodeId, 'A CodeSetBundle record is required for PatientImmunization tests.');
+
+        PatientImmunization vaccination = new PatientImmunization(
+            PatientId       = patientId,
+            Status          = 'Completed',
+            VaccineCodeId   = vaccineCodeId,
+            VaccinationDate = System.now()
+        );
+        vaccination.put('Vaccine_Name__c', 'Existing Test Vaccine');
+        safeInsert(vaccination);
+        return vaccination;
+    }
+
     private static void createTestDataForTest() {
         Account pa = getOrCreateTestPatient();
         getOrCreateContact();
@@ -581,6 +609,192 @@ public class MedicalRecordsUpdateTest {
         System.assertEquals(1,                         result.size());
         System.assertEquals(false,                     result[0].success);
         System.assertEquals('UNSUPPORTED_OBJECT_TYPE', result[0].errorCode);
+    }
+
+    /* ============================================================
+       IMMUNIZATION - INSERT SUCCESS VIA SINGULAR ALIAS
+    ============================================================ */
+    @IsTest
+    static void testImmunization_Insert_Success() {
+        Account pa = getOrCreateTestPatient();
+        Id vaccineCodeId = getAnyVaccineCodeId();
+        System.assertNotEquals(null, vaccineCodeId, 'A CodeSetBundle record is required for PatientImmunization tests.');
+
+        Test.startTest();
+        RestResponse res = fireRequest(new Map<String, Object>{
+            'immunization' => new List<Object>{
+                new Map<String, Object>{
+                    'vaccine_name'     => 'COVID Booster ' + System.currentTimeMillis(),
+                    'status'           => 'Completed',
+                    'vaccination_date' => '2024-04-05T10:30:00Z',
+                    'accountId'        => pa.Id,
+                    'vaccineCodeId'    => vaccineCodeId
+                }
+            }
+        });
+        Test.stopTest();
+
+        System.assertEquals(200, res.statusCode);
+        String body = res.responseBody.toString();
+        System.assert(body.contains('"successCount":1'), body);
+        System.assert(body.contains('COVID Booster'), body);
+    }
+
+    /* ============================================================
+       IMMUNIZATION - INSERT USING DEFAULT VACCINE CODE LOOKUP
+    ============================================================ */
+    @IsTest
+    static void testImmunization_Insert_DefaultVaccineCodeLookup() {
+        Account pa = getOrCreateTestPatient();
+
+        Test.startTest();
+        RestResponse res = fireRequest(new Map<String, Object>{
+            'immunizations' => new List<Object>{
+                new Map<String, Object>{
+                    'vaccine_name'     => 'Default Vaccine Lookup ' + System.currentTimeMillis(),
+                    'status'           => 'Completed',
+                    'vaccination_date' => '2024-04-06',
+                    'accountId'        => pa.Id
+                }
+            }
+        });
+        Test.stopTest();
+
+        System.assertEquals(200, res.statusCode);
+        String body = res.responseBody.toString();
+        System.assert(body.contains('Default Vaccine Lookup'), body);
+    }
+
+    /* ============================================================
+       IMMUNIZATION - UPDATE SUCCESS WITH ACCOUNT CONTACT MAPPING
+    ============================================================ */
+    @IsTest
+    static void testImmunization_Update_Success() {
+        Account pa = getOrCreateTestPatient();
+        PatientImmunization vaccination = getOrCreatePatientImmunization(pa.Id);
+
+        Test.startTest();
+        RestResponse res = fireRequest(new Map<String, Object>{
+            'immunizations' => new List<Object>{
+                new Map<String, Object>{
+                    'id'               => vaccination.Id,
+                    'vaccine_name'     => 'Updated Vaccine ' + System.currentTimeMillis(),
+                    'status'           => 'Completed',
+                    'vaccination_date' => '2024-05-06'
+                }
+            }
+        });
+        Test.stopTest();
+
+        System.assertEquals(200, res.statusCode);
+        String body = res.responseBody.toString();
+        System.assert(body.contains('"successCount":1'), body);
+        System.assert(body.contains('Updated Vaccine'), body);
+    }
+
+    /* ============================================================
+       IMMUNIZATION - RECORD NOT FOUND
+    ============================================================ */
+    @IsTest
+    static void testImmunization_RecordNotFound() {
+        Account pa = getOrCreateTestPatient();
+        PatientImmunization vaccination = getOrCreatePatientImmunization(pa.Id);
+        Id missingId = vaccination.Id;
+        delete vaccination;
+
+        Test.startTest();
+        RestResponse res = fireRequest(new Map<String, Object>{
+            'immunizations' => new List<Object>{
+                new Map<String, Object>{
+                    'id'               => missingId,
+                    'vaccine_name'     => 'Missing Vaccine',
+                    'status'           => 'Completed',
+                    'vaccination_date' => '2024-05-07',
+                    'accountId'        => pa.Id
+                }
+            }
+        });
+        Test.stopTest();
+
+        System.assertEquals(200, res.statusCode);
+        String body = res.responseBody.toString();
+        System.assert(body.contains('"failureCount":1'), body);
+        System.assert(body.contains('Missing Vaccine'), body);
+    }
+
+    /* ============================================================
+       IMMUNIZATION - INSERT DML FAILURE
+    ============================================================ */
+    @IsTest
+    static void testImmunization_Insert_DmlFailure() {
+        Id vaccineCodeId = getAnyVaccineCodeId();
+        System.assertNotEquals(null, vaccineCodeId, 'A CodeSetBundle record is required for PatientImmunization tests.');
+
+        Test.startTest();
+        RestResponse res = fireRequest(new Map<String, Object>{
+            'immunizations' => new List<Object>{
+                new Map<String, Object>{
+                    'vaccine_name'     => 'Missing Patient Vaccine',
+                    'status'           => 'Completed',
+                    'vaccination_date' => '2024-05-08',
+                    'vaccineCodeId'    => vaccineCodeId
+                }
+            }
+        });
+        Test.stopTest();
+
+        System.assertEquals(200, res.statusCode);
+        String body = res.responseBody.toString();
+        System.assert(body.contains('"failureCount":1'), body);
+        System.assert(body.contains('Missing Patient Vaccine'), body);
+    }
+
+    /* ============================================================
+       IMMUNIZATION - UPDATE DML FAILURE
+    ============================================================ */
+    @IsTest
+    static void testImmunization_Update_DmlFailure() {
+        Account pa = getOrCreateTestPatient();
+        Contact c = getOrCreateContact();
+        PatientImmunization vaccination = getOrCreatePatientImmunization(pa.Id);
+
+        Test.startTest();
+        RestResponse res = fireRequest(new Map<String, Object>{
+            'immunizations' => new List<Object>{
+                new Map<String, Object>{
+                    'id'               => vaccination.Id,
+                    'vaccine_name'     => 'Wrong Patient Reference',
+                    'status'           => 'Completed',
+                    'vaccination_date' => '2024-05-09',
+                    'vaccineCodeId'    => c.Id
+                }
+            }
+        });
+        Test.stopTest();
+
+        System.assertEquals(200, res.statusCode);
+        String body = res.responseBody.toString();
+        System.assert(body.contains('"failureCount":1'), body);
+        System.assert(body.contains('Wrong Patient Reference'), body);
+    }
+
+    /* ============================================================
+       IMMUNIZATION - EMPTY INPUT ROUTING
+    ============================================================ */
+    @IsTest
+    static void testImmunization_EmptyInputRouting() {
+        Test.startTest();
+        List<MedicalRecordsUpdateAPI.ResponseWrapper> emptyResult =
+            MedicalRecordsUpdateAPI.processBulkUpdateByType(
+                'PatientImmunization',
+                new List<Map<String, Object>>()
+            );
+        List<MedicalRecordsUpdateAPI.ResponseWrapper> nullResult =
+            MedicalRecordsUpdateAPI.processBulkUpdateByType('PatientImmunization', null);
+        Test.stopTest();
+
+        System.assertEquals(0, emptyResult.size());
+        System.assertEquals(0, nullResult.size());
     }
 
     /* ============================================================

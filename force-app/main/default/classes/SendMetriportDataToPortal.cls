@@ -89,6 +89,7 @@ public class SendMetriportDataToPortal {
             payload.put('documents', getDocuments(c.AccountId));
             payload.put('labs', getLabs(c.AccountId));
             payload.put('immunization', getImmunizations(c.AccountId));
+            payload.put('messages', getCaseDetails(c.AccountId));
             
         } catch (Exception ex) {
             System.debug('Error building lite payload: ' + ex.getMessage());
@@ -224,33 +225,33 @@ public class SendMetriportDataToPortal {
         parentMap.put('id',         headAccount.PersonContactId != null ? String.valueOf(headAccount.PersonContactId) : null);
         parentMap.put('is_head',    headAccount.Family_Head__c);
         
-        Map<Id, Map<String, Object>> childrenByAccountId = new Map<Id, Map<String, Object>>();
+        Map<Id, Map<String, Object>> childrenByAHRId = new Map<Id, Map<String, Object>>();
         
         for (Account_Head_Relationship__c jr : junctionRecords) {
             if (jr.Authorized_Account_Access__r == null) continue;
-            
-            Id childAccId = jr.Authorized_Account_Access__r.Id;
-            if (childrenByAccountId.containsKey(childAccId)) continue; 
+           
+            if (childrenByAHRId.containsKey(jr.Id)) continue;
             
             Map<String, Object> childMap = new Map<String, Object>();
-            childMap.put('accountId',       String.valueOf(childAccId));
+            childMap.put('accountId',                  String.valueOf(jr.Authorized_Account_Access__r.Id));
             childMap.put('account_headrelationshipid', String.valueOf(jr.Id));
-            childMap.put('name',            jr.Authorized_Account_Access__r.Name != null ? jr.Authorized_Account_Access__r.Name: '');
-            childMap.put('relationship',    jr.Relationship__c != null ? jr.Relationship__c : '');
-            childMap.put('portal_status',   jr.Portal_Access_Status__c != null ? jr.Portal_Access_Status__c : '');
-            childMap.put('id',              jr.Authorized_Account_Access__r.PersonContactId != null ? String.valueOf(jr.Authorized_Account_Access__r.PersonContactId) : null);
-            childMap.put('request_access',  jr.Request_Access__c);
-            childMap.put('give_access',     jr.Give_Access__c);
+            childMap.put('name',           jr.Authorized_Account_Access__r.Name != null ? jr.Authorized_Account_Access__r.Name : '');
+            childMap.put('relationship',   jr.Relationship__c != null ? jr.Relationship__c : '');
+            childMap.put('portal_status',  jr.Portal_Access_Status__c != null ? jr.Portal_Access_Status__c : '');
+            childMap.put('id',             jr.Authorized_Account_Access__r.PersonContactId != null ? String.valueOf(jr.Authorized_Account_Access__r.PersonContactId) : null);
+            childMap.put('request_access', jr.Request_Access__c);
+            childMap.put('give_access',    jr.Give_Access__c);
             childMap.put('headAccountName', headAccount.Name != null ? headAccount.Name : '');
-            childMap.put('is_delete',       false);
-            childrenByAccountId.put(childAccId, childMap);
+            childMap.put('is_head',   false);
+            childMap.put('is_delete', false);
+            
+            childrenByAHRId.put(jr.Id, childMap);
         }
-        
         Map<String, Object> payload = new Map<String, Object>();
         payload.put('is_template', false);
         payload.put('contactId', headAccount.PersonContactId != null ? String.valueOf(headAccount.PersonContactId) : null);
         payload.put('parent',    parentMap);
-        payload.put('children',  childrenByAccountId.values()); 
+        payload.put('children', childrenByAHRId.values()); 
         
         try {
             HttpResponse res = sendHttpRequest(endpoint, payload);
@@ -336,13 +337,14 @@ public class SendMetriportDataToPortal {
     private static List<Map<String, Object>> getSurgicalHistory(Id contactId) {
         List<Map<String, Object>> surgeries = new List<Map<String, Object>>();
         for (HealthCareProcedure s : [
-            SELECT Id, Surgery_Name__c, EffectiveDate, Note__c,Status__c
+            SELECT Id, Name, Surgery_Name__c, EffectiveDate, Note__c,Status__c
             FROM HealthCareProcedure
             WHERE Patient__c = :contactId
         ]) {
             Map<String, Object> data = new Map<String, Object>();
             data.put('id', safeString(s.Id));
-            data.put('name', safeString(s.Surgery_Name__c));
+            data.put('name', String.isNotBlank(s.Surgery_Name__c) ? s.Surgery_Name__c : (String.isNotBlank(s.Name)
+                                                                                                       ? s.Name : ''));
             data.put('surgeryDate', s.EffectiveDate != null ? formatDateTime(s.EffectiveDate) : null);
             data.put('note', safeString(s.Note__c));
             data.put('status', safeString(s.Status__c));
@@ -514,8 +516,8 @@ public class SendMetriportDataToPortal {
         if (accountId == null) return labs;
         try{
             List<CareObservation> records = [
-                SELECT Id,Name, ObservedSubjectId, Category, ObservationStatus, 
-                Range_High__c, Value_Quantity__c,ValueInterpretation,EffectiveDateTime
+                SELECT Id,Name, ObservedSubjectId,Effective_Date_and_Time_Display__c, Category, ObservationStatus, 
+                Range_High__c,Range_Low__c, Value_Quantity__c, Observed_Value__c, ValueInterpretation,EffectiveDateTime
                 FROM CareObservation
                 WHERE ObservedSubjectId = :accountId ORDER BY CreatedDate DESC
             ];
@@ -528,9 +530,10 @@ public class SendMetriportDataToPortal {
                 data.put('Category',          record.Category);
                 data.put('ObservationStatus', record.ObservationStatus);
                 data.put('Range_High',        record.Range_High__c);
-                data.put('Value_Quantity',    record.Value_Quantity__c);
+                data.put('Range_Low',        record.Range_Low__c);
+                data.put('Value_Quantity', String.isBlank(String.valueOf(record.Value_Quantity__c)) ? record.Observed_Value__c : record.Value_Quantity__c);
                 data.put('Value_Interpretation',  record.ValueInterpretation);
-                data.put('Effective_Date',  record.EffectiveDateTime);
+                data.put('Effective_Date',  record.Effective_Date_and_Time_Display__c);
                 labs.add(data);
             }  
         } catch (Exception  ex) {
@@ -540,14 +543,14 @@ public class SendMetriportDataToPortal {
         return labs;
     }
     
-     public static List<Map<String, Object>> getImmunizations(Id accountId) {
+    public static List<Map<String, Object>> getImmunizations(Id accountId) {
         List<Map<String, Object>> Immunizations = new List<Map<String, Object>>();
         if (accountId == null) return Immunizations;
         try{
             List<PatientImmunization> records = [
                 SELECT Id, Vaccine_Name__c,Status,VaccinationDate, PatientId FROM 
                 PatientImmunization WHERE PatientId = :accountId ORDER BY CreatedDate DESC
-                ];
+            ];
             
             for (PatientImmunization record : records) {
                 Map<String, Object> data = new Map<String, Object>();
@@ -556,7 +559,7 @@ public class SendMetriportDataToPortal {
                 data.put('accountId',         record.PatientId);
                 data.put('status',          record.Status);
                 data.put('vaccine_date', record.VaccinationDate);
-             
+                
                 Immunizations.add(data);
             }  
         } catch (Exception  ex) {
@@ -564,6 +567,34 @@ public class SendMetriportDataToPortal {
             
         }
         return Immunizations;
+    }
+    
+    public static List<Map<String, Object>> getCaseDetails(Id accountId) {
+        List<Map<String, Object>> cases = new List<Map<String, Object>>();
+        try {
+            List<Case> records = [
+                SELECT Id, CaseNumber, Subject, Description, ContactId, AccountId, ClosedDate
+                FROM Case
+                WHERE AccountId = :accountId
+                AND Case_Type__c = 'Portal Messages'
+                ORDER BY CreatedDate DESC
+            ];
+            
+            for (Case record : records) {
+                Map<String, Object> data = new Map<String, Object>();
+                data.put('Id', record.Id != null ? record.Id : '');
+                data.put('CaseNumber', record.CaseNumber != null ? record.CaseNumber : '');
+                data.put('Subject', record.Subject != null ? record.Subject : '');
+                data.put('Description', record.Description != null ? record.Description : '');
+                data.put('ContactId', record.ContactId != null ? String.valueOf(record.ContactId) : '');
+                data.put('AccountId', record.AccountId != null ? String.valueOf(record.AccountId) : '');
+                data.put('ClosedDate', record.ClosedDate != null ? formatDateTime(record.ClosedDate) : null);
+                cases.add(data);
+            }
+        } catch (Exception e) {
+            System.debug('Error getting case details: ' + e.getMessage());
+        }
+        return cases;
     }
     
     public static List<Map<String, Object>> getDocuments(Id accountId) {
@@ -590,7 +621,7 @@ public class SendMetriportDataToPortal {
                 SELECT Id,
                 fra__File_Id__c,
                 Fra_AI_Source_File_Id__c,
-                Name,
+                fra__File_Name__c,
                 Send_to_Portal__c,
                 fra__File_Public_Url__c,
                 fra__File_Size__c,
@@ -598,8 +629,9 @@ public class SendMetriportDataToPortal {
                 Source_Type__c,
                 fra__Internal_File_Id__c,
                 Date_of_Service_Display__c,
-                Document_Type__c,
                 Category__c,
+                Description__c,
+                Organization_Name__c,
                 fra__Entity_Storage__c,
                 Related_Summary_File__c
                 FROM fra__File_Storage__c
@@ -611,17 +643,18 @@ public class SendMetriportDataToPortal {
                 Map<String, Object> doc = new Map<String, Object>();
                 doc.put('Id',            fs.fra__Internal_File_Id__c);
                 doc.put('recordId',      String.valueOf(fs.Id));          
-                doc.put('Title',         fs.Name != null                    ? fs.Name                        : '');
+                doc.put('Title',         fs.fra__File_Name__c != null       ? fs.fra__File_Name__c   : '');
                 doc.put('PublicUrl',     fs.fra__File_Public_Url__c != null ? fs.fra__File_Public_Url__c     : '');
                 doc.put('ContentSize',      fs.fra__File_Size__c != null       ? String.valueOf(fs.fra__File_Size__c) : '');
                 doc.put('FileType',      fs.fra__File_Type__c != null       ? fs.fra__File_Type__c           : '');
                 doc.put('source_type',   fs.Source_Type__c != null          ? fs.Source_Type__c              : '');
                 doc.put('CreatedDate',   fs.Date_of_Service_Display__c != null 
                         ? String.valueOf(fs.Date_of_Service_Display__c) : '');
-                doc.put('document_type', fs.Document_Type__c != null        ? fs.Document_Type__c            : '');
                 doc.put('category',      fs.Category__c != null             ? fs.Category__c                 : '');
                 doc.put('accountId',     String.valueOf(accountId));
                 doc.put('relatedFile',    fs.Fra_AI_Source_File_Id__c != null ? fs.Fra_AI_Source_File_Id__c     : '');
+                doc.put('Description',    fs.Description__c != null ? fs.Description__c     : '');
+                doc.put('Organization',    fs.Organization_Name__c != null ? fs.Organization_Name__c     : '');
                 documents.add(doc);
             }
             

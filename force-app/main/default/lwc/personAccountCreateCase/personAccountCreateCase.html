@@ -95,6 +95,16 @@
                 onchange={handleChange}>
             </lightning-combobox>
 
+            <lightning-textarea
+    label="AI Summary"
+    value={aiSummary}
+    data-field="aiSummary"
+    onchange={handleChange}
+    rows="4"
+    placeholder="Enter AI summary here..."
+    class="slds-m-top_medium">
+</lightning-textarea>
+
 
         </div>
 
@@ -148,7 +158,7 @@
 
             <!-- HEALTH CARE PROCEDURES -->
             <template if:true={healthCareProcedures.length}>
-                <lightning-accordion-section label="Surgical History">
+                <lightning-accordion-section label="Procedures">
                     <div class="datatable-scroll">
                         <lightning-datatable
                             key-field="Id"

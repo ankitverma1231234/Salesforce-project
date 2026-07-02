@@ -5,6 +5,7 @@ public with sharing class AccountStoredFilesViewController {
     public class StoredFileRow {
         @AuraEnabled public Id id;
         @AuraEnabled public String name;
+        @AuraEnabled public String fileName;
         @AuraEnabled public String fileType;
         @AuraEnabled public String fileSize;
         @AuraEnabled public String fileUrl;
@@ -14,9 +15,12 @@ public with sharing class AccountStoredFilesViewController {
         @AuraEnabled public Boolean sendToPortal;
         @AuraEnabled public String serviceDateDisplay;
         @AuraEnabled public String sourceType;
-        @AuraEnabled public String category;
+        @AuraEnabled public String description;
+        @AuraEnabled public String provider;
         @AuraEnabled public String internalFileId;
         @AuraEnabled public String relatedSummaryFile;
+        @AuraEnabled public String category;
+        @AuraEnabled public String documentType;
     }
 
     @AuraEnabled(cacheable=true)
@@ -35,6 +39,7 @@ public with sharing class AccountStoredFilesViewController {
 
         List<String> selectableFields = new List<String>{ 'Id' };
         addAccessibleField(selectableFields, fields, 'Name');
+        addAccessibleField(selectableFields, fields, 'fra__File_Name__c');
         addAccessibleField(selectableFields, fields, 'fra__File_Type__c');
         addAccessibleField(selectableFields, fields, 'fra__File_Size__c');
         addAccessibleField(selectableFields, fields, 'fra__File_Public_Url__c');
@@ -44,9 +49,12 @@ public with sharing class AccountStoredFilesViewController {
         addAccessibleField(selectableFields, fields, 'Send_to_Portal__c');
         addAccessibleField(selectableFields, fields, 'Date_of_Service_Display__c');
         addAccessibleField(selectableFields, fields, 'Source_Type__c');
-        addAccessibleField(selectableFields, fields, 'Category__c');
+        addAccessibleField(selectableFields, fields, 'Description__c');
+        addAccessibleField(selectableFields, fields, 'Organization_Name__c');
         addAccessibleField(selectableFields, fields, 'fra__Internal_File_Id__c');
         addAccessibleField(selectableFields, fields, 'Related_Summary_File__c');
+        addAccessibleField(selectableFields, fields, 'Category__c');
+        addAccessibleField(selectableFields, fields, 'Document_Type__c');
 
         String query =
             'SELECT ' + String.join(selectableFields, ', ') +
@@ -64,6 +72,7 @@ public with sharing class AccountStoredFilesViewController {
             StoredFileRow row = new StoredFileRow();
             row.id = (Id) storedFile.get('Id');
             row.name = getStringValue(storedFile, fields, 'Name');
+            row.fileName = getStringValue(storedFile, fields, 'fra__File_Name__c');
             row.fileType = getStringValue(storedFile, fields, 'fra__File_Type__c');
             row.fileSize = getStringValue(storedFile, fields, 'fra__File_Size__c');
             row.fileUrl = getStringValue(storedFile, fields, 'fra__File_Public_Url__c');
@@ -75,9 +84,12 @@ public with sharing class AccountStoredFilesViewController {
             row.sendToPortal = getBooleanValue(storedFile, fields, 'Send_to_Portal__c');
             row.serviceDateDisplay = getStringValue(storedFile, fields, 'Date_of_Service_Display__c');
             row.sourceType = getStringValue(storedFile, fields, 'Source_Type__c');
-            row.category = getStringValue(storedFile, fields, 'Category__c');
+            row.description = getStringValue(storedFile, fields, 'Description__c');
+            row.provider = getStringValue(storedFile, fields, 'Organization_Name__c');
             row.internalFileId = getStringValue(storedFile, fields, 'fra__Internal_File_Id__c');
             row.relatedSummaryFile = getStringValue(storedFile, fields, 'Related_Summary_File__c');
+            row.category = getStringValue(storedFile, fields, 'Category__c');
+            row.documentType = getStringValue(storedFile, fields, 'Document_Type__c');
             rows.add(row);
         }
         return rows;

@@ -109,6 +109,16 @@ public without sharing class AllergyIntoleranceHandler {
                 AllergyIntolerance allergy = parseSingleAllergy(res);
                 if (allergy == null) continue;
 
+                if (String.isBlank(allergy.Allergy_Name__c)) {
+                    System.debug('⏭️ Skipping AllergyIntolerance (no Allergy Name): ' + allergyId);
+                    continue;
+                }
+
+                if (allergy.Allergy_Name__c.trim().equalsIgnoreCase('No Data Available')) {
+                    System.debug('⏭️ Skipping AllergyIntolerance (No Data Available name): ' + allergyId);
+                    continue;
+                }
+
                 allergy.AllergyId__c = allergyId;
 
                 // Dedup by composite key: Allergy_Name__c + Generic__c

@@ -16,7 +16,8 @@ global without sharing class MedicalRecordsUpdateAPI {
             String requestBody = req.requestBody.toString();
             
             Object parsedBody = JSON.deserializeUntyped(requestBody);
-            
+            system.debug('parsedBody>>' +JSON.serializePretty(parsedBody));
+
             if (!(parsedBody instanceof Map<String, Object>)) {
                 batchResponse.success = false;
                 batchResponse.message = 'Invalid request format. Expected grouped JSON object.';
@@ -168,6 +169,11 @@ global without sharing class MedicalRecordsUpdateAPI {
                 
                 'healthcare_professionals' => 'HealthcarePractitionerFacility',
                 'healthcareprofessionals'  => 'HealthcarePractitionerFacility',
+                
+                
+                'immunization'         => 'PatientImmunization',
+                'immunizations'        => 'PatientImmunization',
+                    
                 'document'   => 'ContentVersion'
                 };
                     
@@ -198,6 +204,8 @@ PROCESS BULK UPDATE BY TYPE - Routes to specific bulk method
             return bulkUpdatePersonalContact(records);
         } else if (objectType == 'Account') {
             return bulkUpdatePersonAccount(records);
+        } else if (objectType == 'PatientImmunization') {
+            return bulkUpdateVaccination(records);
         } else if (objectType == 'ContentVersion') {
             return bulkUpsertFiles(records);
         }
@@ -598,15 +606,17 @@ BULK UPDATE ALLERGY - Using AllergyIntolerance Object
             
             if (bodyData.containsKey('name') && bodyData.get('name') != null) 
                 allergy.Allergy_Name__c = (String)bodyData.get('name');
-            allergy.Combine_allergy_and_Generic__c = (String)bodyData.get('name');
+             allergy.Combine_allergy_and_Generic__c = (String)bodyData.get('name');
             
             if (bodyData.containsKey('severity') && bodyData.get('severity') != null) 
                 allergy.Severity = (String)bodyData.get('severity');
             
             if (bodyData.containsKey('reaction') && bodyData.get('reaction') != null) 
                 allergy.Reaction__c = (String)bodyData.get('reaction');
-            if (bodyData.containsKey('status') && bodyData.get('status') != null) 
-                allergy.Status = (String)bodyData.get('status');
+            if (bodyData.containsKey('status') && bodyData.get('status') != null) {
+                Object statusVal = bodyData.get('status');
+                allergy.Status = (statusVal instanceof Boolean) ? ((Boolean)statusVal ? 'Active' : 'Inactive') : (String)statusVal;
+            }
             if (bodyData.containsKey('onsetDate') && bodyData.get('onsetDate') != null) {
                 Date onsetDate = parseDate(bodyData.get('onsetDate'));
                 if (onsetDate != null) {
@@ -2112,6 +2122,160 @@ BULK UPDATE PERSON ACCOUNT
         
         return responses;
     } 
+
+    /* ============================================================================
+BULK UPDATE VACCINATION - Using PatientImmunization Object
+============================================================================ */
+    private static List<ResponseWrapper> bulkUpdateVaccination(List<Map<String, Object>> records) {
+        List<ResponseWrapper> responses = new List<ResponseWrapper>();
+        if (records == null || records.isEmpty()) {
+            return responses;
+        }
+        
+        Set<String> updateIds = new Set<String>();
+        Set<Id> accountIds = new Set<Id>();
+        
+        for (Map<String, Object> record : records) {
+            if (record == null) continue;
+            
+            String recordId = normalizeIdValue(record.get('id'));
+            if (!String.isBlank(recordId)) {
+                updateIds.add(recordId);
+            }
+            
+            String accountId = normalizeIdValue(record.get('accountId'));
+            if (!String.isBlank(accountId)) {
+                try {
+                    accountIds.add(Id.valueOf(accountId));
+                } catch (Exception e) {
+                    System.debug('Invalid accountId for vaccination record: ' + accountId);
+                }
+            }
+        }
+        
+        Map<String, PatientImmunization> vaccinationMap = new Map<String, PatientImmunization>();
+        if (!updateIds.isEmpty()) {
+            for (PatientImmunization vaccination : [
+                SELECT Id
+                FROM PatientImmunization
+                WHERE Id IN :updateIds
+            ]) {
+                vaccinationMap.put(vaccination.Id, vaccination);
+            }
+        }
+        
+        Map<String, String> accountIdToPersonContactId = new Map<String, String>();
+        if (!accountIds.isEmpty()) {
+            for (Account accountRecord : [
+                SELECT Id, PersonContactId
+                FROM Account
+                WHERE Id IN :accountIds
+            ]) {
+                accountIdToPersonContactId.put(
+                    String.valueOf(accountRecord.Id),
+                    accountRecord.PersonContactId == null ? null : String.valueOf(accountRecord.PersonContactId)
+                );
+            }
+        }
+        
+        List<PatientImmunization> toUpdate = new List<PatientImmunization>();
+        List<PatientImmunization> toInsert = new List<PatientImmunization>();
+        Map<Integer, Map<String, Object>> insertIndexToData = new Map<Integer, Map<String, Object>>();
+        Map<String, Map<String, Object>> updateIdToData = new Map<String, Map<String, Object>>();
+        Integer insertIndex = 0;
+        
+        for (Map<String, Object> bodyData : records) {
+            if (bodyData == null) continue;
+            
+            String recordId = normalizeIdValue(bodyData.get('id'));
+            Boolean isCreate = String.isBlank(recordId);
+            PatientImmunization vaccination;
+            
+            if (isCreate) {
+                vaccination = new PatientImmunization();
+                toInsert.add(vaccination);
+                insertIndexToData.put(insertIndex++, bodyData);
+            } else {
+                vaccination = vaccinationMap.get(recordId);
+                if (vaccination == null) {
+                    ResponseWrapper resp = new ResponseWrapper();
+                    resp.success = false;
+                    resp.message = 'Vaccination record not found: ' + recordId;
+                    resp.errorCode = 'RECORD_NOT_FOUND';
+                    resp.recordId = recordId;
+                    resp.objectType = 'PatientImmunization';
+                    resp.recordData = bodyData;
+                    responses.add(resp);
+                    continue;
+                }
+                toUpdate.add(vaccination);
+                updateIdToData.put(recordId, bodyData);
+            }
+            
+            mapVaccinationFields(vaccination, bodyData, accountIdToPersonContactId, isCreate);
+        }
+        
+        if (!toUpdate.isEmpty()) {
+            Database.SaveResult[] results = Database.update(toUpdate, false);
+            for (Integer i = 0; i < results.size(); i++) {
+                Database.SaveResult sr = results[i];
+                PatientImmunization vaccination = toUpdate[i];
+                
+                ResponseWrapper resp = new ResponseWrapper();
+                resp.recordId = vaccination != null ? vaccination.Id : null;
+                resp.objectType = 'PatientImmunization';
+                resp.recordData = vaccination != null ? updateIdToData.get(String.valueOf(vaccination.Id)) : null;
+                
+                if (sr != null && sr.isSuccess()) {
+                    resp.success = true;
+                    resp.message = 'Vaccination record updated successfully';
+                } else {
+                    resp.success = false;
+                    String errorMsg = (sr != null && sr.getErrors() != null && sr.getErrors().size() > 0)
+                        ? sr.getErrors()[0].getMessage()
+                        : 'Unknown error';
+                    resp.message = 'Failed to update vaccination: ' + errorMsg;
+                    resp.errorCode = 'DML_ERROR';
+                    resp.errorDetails = errorMsg;
+                }
+                responses.add(resp);
+            }
+        }
+        
+        if (!toInsert.isEmpty()) {
+            Database.SaveResult[] results = Database.insert(toInsert, false);
+            for (Integer i = 0; i < results.size(); i++) {
+                Database.SaveResult sr = results[i];
+                
+                ResponseWrapper resp = new ResponseWrapper();
+                resp.objectType = 'PatientImmunization';
+                resp.recordData = insertIndexToData.get(i);
+                
+                if (sr != null && sr.isSuccess()) {
+                    resp.success = true;
+                    resp.message = 'Vaccination record created successfully';
+                    resp.recordId = sr.getId();
+                    
+                    if (resp.recordData != null) {
+                        resp.recordData.put('id', sr.getId());
+                    }
+                } else {
+                    resp.success = false;
+                    String errorMsg = (sr != null && sr.getErrors() != null && sr.getErrors().size() > 0)
+                        ? sr.getErrors()[0].getMessage()
+                        : 'Unknown error';
+                    resp.message = 'Failed to create vaccination: ' + errorMsg;
+                    resp.errorCode = 'DML_ERROR';
+                    resp.errorDetails = errorMsg;
+                    resp.recordId = null;
+                }
+                responses.add(resp);
+            }
+        }
+        
+        return responses;
+    }
+
 // file
 public static List<ResponseWrapper> bulkUpsertFiles(List<Map<String, Object>> records) {
     List<ResponseWrapper> responses = new List<ResponseWrapper>();
@@ -2229,6 +2393,133 @@ public static List<ResponseWrapper> bulkUpsertFiles(List<Map<String, Object>> re
     
     
     // Helper methods
+    private static void mapVaccinationFields(
+        PatientImmunization vaccination,
+        Map<String, Object> bodyData,
+        Map<String, String> accountIdToPersonContactId,
+        Boolean isCreate
+    ) {
+        if (vaccination == null || bodyData == null) return;
+        
+        Map<String, Schema.SObjectField> fields =
+            PatientImmunization.SObjectType.getDescribe().fields.getMap();
+        
+        if (bodyData.containsKey('vaccine_name') && bodyData.get('vaccine_name') != null) {
+            putIfFieldExists(vaccination, fields, 'Vaccine_Name__c', getStringValue(bodyData.get('vaccine_name')));
+        }
+        
+        if (bodyData.containsKey('accountId') && bodyData.get('accountId') != null) {
+            putIfFieldExists(vaccination, fields, 'PatientId', getStringValue(bodyData.get('accountId')));
+        }
+        
+        String accountId = normalizeIdValue(bodyData.get('accountId'));
+        String userId = getStringValue(bodyData.get('user_id'));
+        if (!String.isBlank(accountId) && accountIdToPersonContactId.containsKey(accountId)) {
+            userId = accountIdToPersonContactId.get(accountId);
+        }
+        if (!String.isBlank(userId)) {
+            bodyData.put('user_id', userId);
+            putIfFieldExists(vaccination, fields, 'PersonContactId', userId);
+        }
+        
+        String statusField = getFirstExistingField(fields, new List<String>{ 'Status__c', 'Status' });
+        if (statusField != null && bodyData.containsKey('status') && bodyData.get('status') != null) {
+            vaccination.put(statusField, getStringValue(bodyData.get('status')));
+        }
+        
+        String vaccinationDateField = getFirstExistingField(fields, new List<String>{ 'VaccinationDate__c', 'VaccinationDate' });
+        if (vaccinationDateField != null && bodyData.containsKey('vaccination_date') && bodyData.get('vaccination_date') != null) {
+            Object parsedDateValue = parseSObjectDateValue(
+                bodyData.get('vaccination_date'),
+                fields.get(vaccinationDateField).getDescribe().getType()
+            );
+            
+            if (parsedDateValue != null) {
+                vaccination.put(vaccinationDateField, parsedDateValue);
+            }
+        }
+        
+        if (fields.containsKey('VaccineCodeId')) {
+            String vaccineCodeId = getStringValue(bodyData.get('vaccineCodeId'));
+            if (!String.isBlank(vaccineCodeId)) {
+                vaccination.put('VaccineCodeId', vaccineCodeId);
+            } else if (isCreate == true) {
+                Id defaultVaccineCodeId = getDefaultVaccineCodeId();
+                if (defaultVaccineCodeId != null) {
+                    vaccination.put('VaccineCodeId', defaultVaccineCodeId);
+                }
+            }
+        }
+    }
+    
+    private static String getStringValue(Object value) {
+        if (value == null) return null;
+        String stringValue = String.valueOf(value);
+        return String.isBlank(stringValue) ? null : stringValue;
+    }
+    
+    private static String normalizeIdValue(Object value) {
+        String stringValue = getStringValue(value);
+        if (String.isBlank(stringValue)) return null;
+        
+        try {
+            return String.valueOf(Id.valueOf(stringValue));
+        } catch (Exception e) {
+            return stringValue;
+        }
+    }
+    
+    private static String getFirstExistingField(Map<String, Schema.SObjectField> fields, List<String> fieldNames) {
+        if (fields == null || fieldNames == null) return null;
+        
+        for (String fieldName : fieldNames) {
+            if (fields.containsKey(fieldName)) {
+                return fieldName;
+            }
+        }
+        
+        return null;
+    }
+    
+    private static void putIfFieldExists(
+        SObject record,
+        Map<String, Schema.SObjectField> fields,
+        String fieldName,
+        Object value
+    ) {
+        if (record == null || fields == null || !fields.containsKey(fieldName) || value == null) return;
+        record.put(fieldName, value);
+    }
+    
+    private static Object parseSObjectDateValue(Object dateValue, Schema.DisplayType fieldType) {
+        if (dateValue == null) return null;
+        
+        if (fieldType == Schema.DisplayType.Date) {
+            return parseDate(dateValue);
+        }
+        
+        if (fieldType == Schema.DisplayType.DateTime) {
+            return parseFlexibleDatetime(dateValue);
+        }
+        
+        return dateValue;
+    }
+    
+    private static Id getDefaultVaccineCodeId() {
+        try {
+            List<CodeSetBundle> codes = [
+                SELECT Id
+                FROM CodeSetBundle
+                WHERE Name = 'Test Vaccine'
+                LIMIT 1
+            ];
+            return codes.isEmpty() ? null : codes[0].Id;
+        } catch (Exception e) {
+            System.debug('Unable to find default vaccine code: ' + e.getMessage());
+            return null;
+        }
+    }
+    
     private static void mapAddress(Map<String, Object> addr, String prefix, Account a) {
         if (addr == null) return;
         if (addr.containsKey('street')) a.put(prefix+'Street', addr.get('street'));
@@ -2267,9 +2558,20 @@ UTILITY METHODS - DATE/DATETIME PARSING
         if (dateValue == null) return null;
         
         try {
+            if (dateValue instanceof Date) {
+                return (Date) dateValue;
+            }
+            
+            if (dateValue instanceof Datetime) {
+                return ((Datetime) dateValue).date();
+            }
+            
             if (dateValue instanceof String) {
-                String dateStr = (String) dateValue;
+                String dateStr = ((String) dateValue).trim();
                 if (String.isBlank(dateStr)) return null;
+                if (dateStr.contains('T')) {
+                    dateStr = dateStr.substring(0, dateStr.indexOf('T'));
+                }
                 return Date.valueOf(dateStr);
             }
         } catch (Exception e) {
@@ -2277,6 +2579,56 @@ UTILITY METHODS - DATE/DATETIME PARSING
         }
         return null;
     }
+    
+    private static Datetime parseFlexibleDatetime(Object datetimeValue) {
+        if (datetimeValue == null) return null;
+        
+        try {
+            if (datetimeValue instanceof Datetime) {
+                return (Datetime) datetimeValue;
+            }
+            
+            if (datetimeValue instanceof Date) {
+                return Datetime.newInstance((Date) datetimeValue, Time.newInstance(0, 0, 0, 0));
+            }
+            
+            if (datetimeValue instanceof String) {
+                String datetimeStr = ((String) datetimeValue).trim();
+                if (String.isBlank(datetimeStr)) return null;
+                
+                if (datetimeStr.length() == 10) {
+                    Date dateOnly = parseDate(datetimeStr);
+                    return dateOnly == null ? null : Datetime.newInstance(dateOnly, Time.newInstance(0, 0, 0, 0));
+                }
+                
+                try {
+                    return Datetime.valueOf(datetimeStr);
+                } catch (Exception e) {
+                    String normalized = datetimeStr.replace('T', ' ').replace('Z', '');
+                    if (normalized.contains('.')) {
+                        normalized = normalized.substring(0, normalized.indexOf('.'));
+                    }
+                    
+                    Integer plusIndex = normalized.indexOf('+');
+                    if (plusIndex > -1) {
+                        normalized = normalized.substring(0, plusIndex);
+                    }
+                    
+                    Integer minusIndex = normalized.lastIndexOf('-');
+                    if (minusIndex > 10) {
+                        normalized = normalized.substring(0, minusIndex);
+                    }
+                    
+                    return Datetime.valueOfGmt(normalized.trim());
+                }
+            }
+        } catch (Exception e) {
+            System.debug('Error parsing flexible datetime: ' + e.getMessage());
+        }
+        
+        return null;
+    }
+    
     private static Datetime parseDatetime(Object datetimeValue) {
         if (datetimeValue == null) return null;
         

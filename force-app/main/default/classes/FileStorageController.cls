@@ -1,6 +1,6 @@
 public with sharing class FileStorageController {
 
-    @AuraEnabled(cacheable=true)
+    @AuraEnabled
     public static List<FileStorageWrapper> getFileStorageRecords(Id recordId) {
         if (recordId == null) {
             throw new AuraHandledException('Record Id is required.');
@@ -19,7 +19,10 @@ public with sharing class FileStorageController {
                    fra__Related_Object_URL__c,
                    fra__View_File__c,
                    Send_to_Portal__c,
-                   Source_Type__c
+                   Source_Type__c,
+                   Description__c,
+                   Organization_Name__c,
+                   Date_of_Service_Display__c
             FROM fra__File_Storage__c
             WHERE fra__Object_RecordId__c = :recordIdStr
             ORDER BY Name ASC
@@ -39,6 +42,9 @@ public with sharing class FileStorageController {
             w.viewFile = rec.fra__View_File__c;
             w.sendToPortal = rec.Send_to_Portal__c == true;
             w.sourceType = rec.Source_Type__c;
+            w.description = rec.Description__c;
+            w.provider = rec.Organization_Name__c;
+            w.dateOfService = string.valueof(rec.Date_of_Service_Display__c);
             results.add(w);
         }
 
@@ -82,6 +88,9 @@ public with sharing class FileStorageController {
         @AuraEnabled public String viewFile;
         @AuraEnabled public Boolean sendToPortal;
         @AuraEnabled public String sourceType;
+        @AuraEnabled public String description;
+        @AuraEnabled public String provider;
+        @AuraEnabled public String dateOfService;
     }
     public static void fakeCode(){
         Integer i=1;

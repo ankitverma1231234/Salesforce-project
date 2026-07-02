@@ -3,17 +3,19 @@ public without sharing class MedicationHandler {
     /* -------------------------
        Helper: meta.lastUpdated 12-month gate
     -------------------------- */
-    private static Boolean isWithin12Months(Map<String, Object> resource) {
-        Object metaRaw = resource.get('meta');
-        if (!(metaRaw instanceof Map<String, Object>)) return true;
-
-        String lastUpdatedStr = (String) ((Map<String, Object>) metaRaw).get('lastUpdated');
-        if (String.isBlank(lastUpdatedStr)) return true;
-
-        Datetime lastUpdated = parseFhirDateTime(lastUpdatedStr);
-        if (lastUpdated == null) return true;
-
-        return lastUpdated >= Datetime.now().addMonths(-12);
+    private static Boolean isDateWithin12Months(Map<String, Object> resource, String fieldName) {
+        if (resource == null || String.isBlank(fieldName)) {
+            return false;
+        }
+    
+        Datetime dt = parseFhirDateTime(resource.get(fieldName));
+    
+        // If date is missing or invalid, skip the record
+        if (dt == null) {
+            return false;
+        }
+    
+        return dt >= Datetime.now().addMonths(-12);
     }
 
     /* -------------------------
@@ -90,8 +92,8 @@ public without sharing class MedicationHandler {
                     Map<String, Object> res = (Map<String, Object>) resRaw;
                     if (!'MedicationDispense'.equals((String) res.get('resourceType'))) continue;
 
-                    if (!isWithin12Months(res)) {
-                        System.debug('⏭️ Skipping MedicationDispense (older than 12 months): ' + res.get('id'));
+                   if (!isDateWithin12Months(res, 'whenHandedOver')) {
+                        System.debug('⏭️ Skipping MedicationDispense (older than 12 months by whenHandedOver): ' + res.get('id'));
                         continue;
                     }
 
@@ -193,6 +195,11 @@ public without sharing class MedicationHandler {
                 MedicationDispense md = parseSingleMedicationDispense(res, patientMap, medicationMap);
                 if (md == null) continue;
 
+               /* if ('completed'.equalsIgnoreCase(md.Status)) {
+                    System.debug('⏭️ Skipping MedicationDispense (status = completed): ' + dispenseId);
+                    continue;
+                } */
+
                 String dedupeKey = buildDispenseDedupeKey(md.MedicationId, md.DispensedDateTime);
                 if (!String.isBlank(dedupeKey)) {
                     if (existingDispenseDedupeKeys.contains(dedupeKey) || inFlightDispenseDedupeKeys.contains(dedupeKey)) {
@@ -242,6 +249,12 @@ public without sharing class MedicationHandler {
 
                 System.debug('✅ Inserted MedicationDispense records: ' + successCount +
                              ' | Failed: ' + (dispensesToInsert.size() - successCount));
+
+            }
+
+            // Consolidate into one Medication_History__c per medicine name
+            if (!patientMap.isEmpty()) {
+                MedicationHandler.upsertMedicationHistory(patientMap.values()[0]);
             }
 
         } catch (Exception e) {
@@ -344,10 +357,10 @@ public without sharing class MedicationHandler {
                     Map<String, Object> res = (Map<String, Object>) resRaw;
                     if (!'MedicationRequest'.equals((String) res.get('resourceType'))) continue;
 
-                    if (!isWithin12Months(res)) {
-                        System.debug('⏭️ Skipping MedicationRequest (older than 12 months): ' + res.get('id'));
-                        continue;
-                    }
+                   if (!isDateWithin12Months(res, 'authoredOn')) {
+                            System.debug('⏭️ Skipping MedicationRequest (older than 12 months by authoredOn): ' + res.get('id'));
+                            continue;
+                        }
 
                     requestResources.add(res);
 
@@ -464,6 +477,11 @@ public without sharing class MedicationHandler {
                 MedicationRequest mr = parseSingleMedicationRequest(res, patientMap, medicationMap, organizationMap);
                 if (mr == null) continue;
 
+               /* if ('completed'.equalsIgnoreCase(mr.Status)) {
+                    System.debug('⏭️ Skipping MedicationRequest (status = completed): ' + requestId);
+                    continue;
+                } */
+
                 String dedupeKey = buildRequestDedupeKey(mr.MedicationId);
                 if (!String.isBlank(dedupeKey)) {
                     if (existingRequestDedupeKeys.contains(dedupeKey) || inFlightRequestDedupeKeys.contains(dedupeKey)) {
@@ -513,6 +531,12 @@ public without sharing class MedicationHandler {
 
                 System.debug('✅ Inserted MedicationRequest records: ' + successCount +
                              ' | Failed: ' + (requestsToInsert.size() - successCount));
+
+            }
+
+            // Consolidate into one Medication_History__c per medicine name
+            if (!patientMap.isEmpty()) {
+                MedicationHandler.upsertMedicationHistory(patientMap.values()[0]);
             }
 
         } catch (Exception e) {
@@ -537,6 +561,10 @@ public without sharing class MedicationHandler {
         if (resource.containsKey('status')) {
             mr.Status = (String) resource.get('status');
         }
+        
+        if (resource.containsKey('authoredOn') && resource.get('authoredOn') != null) {
+                mr.Authored_On__c = parseFhirDateTime(resource.get('authoredOn'));
+            }
 
         mr.Type = 'Order';
 
@@ -574,4 +602,230 @@ public without sharing class MedicationHandler {
 
         return mr;
     }
+
+    /* =========================================================
+       Medication History — One consolidated record per unique
+       medicine name per patient, merging data from all four
+       source objects (Statement, Request, Dispense, Administration).
+       Call this after inserting any medication-related records.
+    ========================================================= */
+    public static void upsertMedicationHistory(Id patientId) {
+        if (patientId == null) return;
+
+        try {
+        Set<Id> medicationIds = new Set<Id>();
+
+        for (MedicationStatement ms : [
+            SELECT MedicationId FROM MedicationStatement
+            WHERE PatientId = :patientId AND MedicationId != null
+        ]) { medicationIds.add(ms.MedicationId); }
+
+        for (MedicationRequest mr : [
+            SELECT MedicationId FROM MedicationRequest
+            WHERE PatientId = :patientId AND MedicationId != null
+        ]) { medicationIds.add(mr.MedicationId); }
+
+        for (MedicationDispense md : [
+            SELECT MedicationId FROM MedicationDispense
+            WHERE PatientId = :patientId AND MedicationId != null
+        ]) { medicationIds.add(md.MedicationId); }
+
+        for (MedicationAdministration ma : [
+            SELECT MedicationId FROM MedicationAdministration
+            WHERE PatientId = :patientId AND MedicationId != null
+        ]) { medicationIds.add(ma.MedicationId); }
+
+        if (medicationIds.isEmpty()) return;
+
+        /* ── 2. Load Medication names ── */
+        Map<Id, String> medIdToName = new Map<Id, String>();
+        for (Medication m : [
+            SELECT Id, Name FROM Medication WHERE Id IN :medicationIds
+        ]) {
+            medIdToName.put(m.Id, m.Name);
+        }
+
+        /* ── 3. Group all source data by lowercase medicine name ── */
+        // Map: lowerMedName → consolidated field values
+        Map<String, Medication_History__c> historyByName = new Map<String, Medication_History__c>();
+
+        // Helper: get or create consolidated record for a medicine name
+        // (initialised with patient and med lookup)
+
+        // -- MedicationStatement (status, frequency, dose, startDate) --
+        for (MedicationStatement ms : [
+            SELECT MedicationId, Status, Frequency__c, Dose__c, StartDateTime
+            FROM MedicationStatement
+            WHERE PatientId = :patientId AND MedicationId IN :medicationIds
+        ]) {
+            String medName = medIdToName.get(ms.MedicationId);
+            if (String.isBlank(medName) || medName.trim().equalsIgnoreCase('No Data Available')) continue;
+            String key = medName.trim().toLowerCase();
+            Medication_History__c mh = getOrCreate(historyByName, key, patientId, ms.MedicationId);
+            if (!String.isBlank(ms.Status))       mh.Status__c     = ms.Status;
+            if (!String.isBlank(ms.Frequency__c)) mh.Frequency__c  = ms.Frequency__c;
+            if (!String.isBlank(ms.Dose__c))      mh.Dose__c       = ms.Dose__c;
+            if (ms.StartDateTime != null)          mh.Start_Date__c = ms.StartDateTime;
+        }
+
+        // -- MedicationRequest (status, requester) --
+        for (MedicationRequest mr : [
+            SELECT MedicationId, Status, Requester_Name__c
+            FROM MedicationRequest
+            WHERE PatientId = :patientId AND MedicationId IN :medicationIds
+        ]) {
+            String medName = medIdToName.get(mr.MedicationId);
+            if (String.isBlank(medName) || medName.trim().equalsIgnoreCase('No Data Available')) continue;
+            String key = medName.trim().toLowerCase();
+            Medication_History__c mh = getOrCreate(historyByName, key, patientId, mr.MedicationId);
+            if (!String.isBlank(mr.Status))            mh.Status__c         = mr.Status;
+            if (!String.isBlank(mr.Requester_Name__c)) mh.Requester_Name__c = mr.Requester_Name__c;
+        }
+
+        // -- MedicationDispense (status, quantity, dispensedDate, daysSupply) --
+        for (MedicationDispense md : [
+            SELECT MedicationId, Status, Quantity__c, DispensedDateTime, Days_Supply__c
+            FROM MedicationDispense
+            WHERE PatientId = :patientId AND MedicationId IN :medicationIds
+        ]) {
+            String medName = medIdToName.get(md.MedicationId);
+            if (String.isBlank(medName) || medName.trim().equalsIgnoreCase('No Data Available')) continue;
+            String key = medName.trim().toLowerCase();
+            Medication_History__c mh = getOrCreate(historyByName, key, patientId, md.MedicationId);
+            if (!String.isBlank(md.Status))         mh.Status__c       = md.Status;
+            if (!String.isBlank(md.Quantity__c))    mh.Quantity_Unit__c     = md.Quantity__c;
+            if (md.DispensedDateTime != null)        mh.Dispensed_Date__c = md.DispensedDateTime;
+            if (!String.isBlank(md.Days_Supply__c)) mh.Days_Supply__c  = md.Days_Supply__c;
+        }
+
+        // -- MedicationAdministration (startDate, endDate) --
+        for (MedicationAdministration ma : [
+            SELECT MedicationId, StartDate, EndDate
+            FROM MedicationAdministration
+            WHERE PatientId = :patientId AND MedicationId IN :medicationIds
+        ]) {
+            String medName = medIdToName.get(ma.MedicationId);
+            if (String.isBlank(medName) || medName.trim().equalsIgnoreCase('No Data Available')) continue;
+            String key = medName.trim().toLowerCase();
+            Medication_History__c mh = getOrCreate(historyByName, key, patientId, ma.MedicationId);
+            if (ma.StartDate != null) mh.Start_Date__c = ma.StartDate;
+            if (ma.EndDate   != null) mh.End_Date__c   = ma.EndDate;
+        }
+
+        if (historyByName.isEmpty()) return;
+
+        /* ── 4. Load existing Medication_History__c records for this patient
+                 keyed by lowercase medicine name to decide insert vs update ── */
+        Map<String, Medication_History__c> existingByName = new Map<String, Medication_History__c>();
+        for (Medication_History__c mh : [
+            SELECT Id, Medicine_Name_Key__c, Medication__c, Medication__r.Name
+            FROM Medication_History__c
+            WHERE Patient__c = :patientId
+              AND Medicine_Name_Key__c != null
+        ]) {
+            existingByName.put(mh.Medicine_Name_Key__c, mh);
+        }
+
+        /* ── 5. Split into insert vs update lists ── */
+        List<Medication_History__c> toInsert = new List<Medication_History__c>();
+        List<Medication_History__c> toUpdate = new List<Medication_History__c>();
+
+        for (String key : historyByName.keySet()) {
+            Medication_History__c incoming = historyByName.get(key);
+            incoming.Medicine_Name_Key__c = key;
+
+            if (existingByName.containsKey(key)) {
+                incoming.Id = existingByName.get(key).Id;
+                toUpdate.add(incoming);
+            } else {
+                toInsert.add(incoming);
+            }
+        }
+
+        /* ── 6. Insert new ── */
+        if (!toInsert.isEmpty()) {
+            Database.SaveResult[] results = Database.insert(toInsert, false);
+            List<Error_Log__c> errorLogs  = new List<Error_Log__c>();
+            Integer successCount = 0;
+            for (Integer i = 0; i < results.size(); i++) {
+                if (results[i].isSuccess()) {
+                    successCount++;
+                } else {
+                    List<String> msgs = new List<String>();
+                    for (Database.Error err : results[i].getErrors()) {
+                        msgs.add('Status: ' + err.getStatusCode() +
+                                 ' | Message: ' + err.getMessage() +
+                                 ' | Fields: ' + String.join(err.getFields(), ', '));
+                    }
+                    errorLogs.add(new Error_Log__c(
+                        Object_API_Name__c    = 'Medication_History__c',
+                        Error_Message__c      = String.join(msgs, '\n'),
+                        Record_External_Id__c = toInsert[i].Medicine_Name_Key__c,
+                        Context__c            = 'MedicationHandler.upsertMedicationHistory',
+                        Stack_Trace__c        = 'Patient: ' + patientId
+                    ));
+                }
+            }
+            if (!errorLogs.isEmpty()) Database.insert(errorLogs, false);
+            System.debug('✅ Inserted Medication_History__c: ' + successCount +
+                         ' | Failed: ' + (toInsert.size() - successCount));
+        }
+
+        /* ── 7. Update existing ── */
+        if (!toUpdate.isEmpty()) {
+            Database.SaveResult[] results = Database.update(toUpdate, false);
+            List<Error_Log__c> errorLogs  = new List<Error_Log__c>();
+            Integer successCount = 0;
+            for (Integer i = 0; i < results.size(); i++) {
+                if (results[i].isSuccess()) {
+                    successCount++;
+                } else {
+                    List<String> msgs = new List<String>();
+                    for (Database.Error err : results[i].getErrors()) {
+                        msgs.add('Status: ' + err.getStatusCode() +
+                                 ' | Message: ' + err.getMessage() +
+                                 ' | Fields: ' + String.join(err.getFields(), ', '));
+                    }
+                    errorLogs.add(new Error_Log__c(
+                        Object_API_Name__c    = 'Medication_History__c',
+                        Error_Message__c      = String.join(msgs, '\n'),
+                        Record_External_Id__c = toUpdate[i].Medicine_Name_Key__c,
+                        Context__c            = 'MedicationHandler.upsertMedicationHistory',
+                        Stack_Trace__c        = 'Patient: ' + patientId
+                    ));
+                }
+            }
+            if (!errorLogs.isEmpty()) Database.insert(errorLogs, false);
+            System.debug('✅ Updated Medication_History__c: ' + successCount +
+                         ' | Failed: ' + (toUpdate.size() - successCount));
+        }
+
+        } catch (Exception e) {
+            System.debug('❌ upsertMedicationHistory error: ' + e.getMessage() + ' | Line: ' + e.getLineNumber());
+            Database.insert(new Error_Log__c(
+                Object_API_Name__c = 'Medication_History__c',
+                Error_Message__c   = e.getMessage(),
+                Context__c         = 'MedicationHandler.upsertMedicationHistory',
+                Stack_Trace__c     = 'Patient: ' + patientId + ' | Line: ' + e.getLineNumber()
+            ), false);
+        }
+    }
+
+    /* ── Helper: get or initialise a Medication_History__c for a medicine key ── */
+    private static Medication_History__c getOrCreate(
+        Map<String, Medication_History__c> mapp,
+        String key,
+        Id patientId,
+        Id medicationId
+    ) {
+        if (!mapp.containsKey(key)) {
+            Medication_History__c mh = new Medication_History__c();
+            mh.Patient__c           = patientId;
+            mh.Medication__c        = medicationId;
+            mh.Medicine_Name_Key__c = key;
+            mapp.put(key, mh);
+        }
+        return mapp.get(key);
+    }
+
 }

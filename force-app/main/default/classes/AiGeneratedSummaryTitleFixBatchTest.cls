@@ -10,7 +10,7 @@ public class AiGeneratedSummaryTitleFixBatchTest {
             Title = 'Test Metriport File',
             PathOnClient = 'TestMetriportFile.pdf',
             VersionData = Blob.valueOf('Test Content'),
-            Source__c = 'metriport',
+            Source_Type__c = 'metriport',
             Send_File_to_Portal__c = true,
             FirstPublishLocationId = acc.Id
         );
@@ -48,7 +48,7 @@ public class AiGeneratedSummaryTitleFixBatchTest {
             Title = 'Test Metriport File',
             PathOnClient = 'TestMetriportFile.pdf',
             VersionData = Blob.valueOf('Test Content'),
-            Source__c = 'metriport',
+            Source_Type__c = 'metriport',
             Send_File_to_Portal__c = true,
             FirstPublishLocationId = acc.Id
         );

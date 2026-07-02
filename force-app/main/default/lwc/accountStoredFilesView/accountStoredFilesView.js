@@ -32,11 +32,34 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
     @track searchKey = '';
     @track searchDate = '';
     @track showAiFiles = false;
+
+    
+    @track selectedSourceType = '';
+    @track selectedCategory = '';
+
     @track selectedFileIds = [];
     @track showDeleteModal = false;
     @track pendingDeleteIds = [];
     expandedIds = new Set();
     aiToggleStorageKey = 'accountStoredFilesView.showAiFiles';
+
+    sourceTypeOptions = [
+        { label: 'All Source Types', value: '' },
+        { label: 'Metriport', value: 'Metriport' },
+        { label: 'Health Records', value: 'Health Records' },
+        { label: 'AI', value: 'AI' },
+        { label: 'Personal Documents', value: 'Personal Documents' }
+    ];
+
+    categoryOptions = [
+        { label: 'All Categories', value: '' },
+        { label: 'Estate, Legal & Financial Documents', value: 'Estate, Legal & Financial Documents' },
+        { label: 'Miscellaneous Documents', value: 'Miscellaneous Documents' },
+        { label: 'Healthcare Documents', value: 'Healthcare Documents' },
+        { label: 'Lab', value: 'Lab' },
+        { label: 'Medical Records', value: 'Medical Records' },
+        { label: 'Radiology', value: 'Radiology' }
+    ];
 
     connectedCallback() {
         try {
@@ -45,7 +68,7 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
                 this.showAiFiles = true;
             }
         } catch (e) {
-            // sessionStorage unavailable — fall back to default
+            
         }
     }
 
@@ -104,7 +127,7 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
                 return {
                     id: file.id,
                     key: file.id || `${file.name}_${index}`,
-                    name: file.name || 'Untitled File',
+                    name: file.fileName || file.name || 'Untitled File',
                     viewUrl: file.viewUrl,
                     fileUrl: file.fileUrl,
                     recordUrl: file.id ? `/lightning/r/fra__File_Storage__c/${file.id}/view` : null,
@@ -113,13 +136,26 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
                     sendToPortal: file.sendToPortal === true,
                     serviceDateDisplay: this.stripTime(file.serviceDateDisplay) || 'N/A',
                     sourceType,
-                    category: file.category || 'N/A',
+                    description: file.description || 'N/A',
+                    provider: file.provider || 'N/A',
                     iconName: this.getFileIcon(file.fileType),
                     internalFileId: file.internalFileId || null,
                     relatedSummaryFile,
                     isAiChild,
+                    category: file.category || '',
+                    documentType: file.documentType || '',
                     isSelected: this.selectedFileIds.includes(file.id)
                 };
+            });
+            this.fileList.sort((a, b) => {
+                const ta = Date.parse(a.serviceDateDisplay);
+                const tb = Date.parse(b.serviceDateDisplay);
+                const aInvalid = Number.isNaN(ta);
+                const bInvalid = Number.isNaN(tb);
+                if (aInvalid && bInvalid) return 0;
+                if (aInvalid) return -1;
+                if (bInvalid) return 1;
+                return tb - ta;
             });
             this.currentPage = 1;
             this.updatePaginatedFiles();
@@ -141,6 +177,17 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
             this.showToast('Error', this.reduceError(error), 'error');
         } finally {
             this.isLoading = false;
+        }
+        const retryDelays = [4000, 10000, 20000];
+        for (const delay of retryDelays) {
+            // eslint-disable-next-line @lwc/lwc/no-async-operation
+            await new Promise(resolve => setTimeout(resolve, delay));
+            try {
+                await refreshApex(this.wiredFileList);
+                this.updatePaginatedFiles();
+            } catch (e) {
+                
+            }
         }
     }
 
@@ -166,19 +213,16 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
     openDriveFile(fileStorageId) {
         const file = this.fileList.find(item => item.id === fileStorageId);
         const previewUrl = file?.viewUrl;
-
         if (!previewUrl) {
             this.showToast('Error', 'No preview URL is available for this file.', 'error');
             return;
         }
-
         window.open(previewUrl, '_blank');
     }
 
     handleMenuSelect(event) {
         const action = event.detail.value;
         const fileStorageId = event.target.dataset.id;
-
         if (action === 'view_file') {
             this.openDriveFile(fileStorageId);
         } else if (action === 'edit') {
@@ -204,17 +248,13 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
             this.showToast('Error', 'File record Id was not found.', 'error');
             return;
         }
-
         const confirmed = await LightningConfirm.open({
             message: 'Are you sure you want to delete this file record?',
             variant: 'header',
             label: 'Confirm Delete',
             theme: 'warning'
         });
-
-        if (!confirmed) {
-            return;
-        }
+        if (!confirmed) return;
 
         this.isLoading = true;
         try {
@@ -232,30 +272,25 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
     handleFileCheckboxChange(event) {
         const fileId = event.target.dataset.id;
         const isChecked = event.target.checked;
-
         if (isChecked && !this.selectedFileIds.includes(fileId)) {
             this.selectedFileIds = [...this.selectedFileIds, fileId];
         } else if (!isChecked && this.selectedFileIds.includes(fileId)) {
             this.selectedFileIds = this.selectedFileIds.filter(id => id !== fileId);
         }
-
         this.refreshSelectionState();
     }
 
     handleSelectAll(event) {
         const isChecked = event.target.checked;
         const visibleIds = this.visibleFileIds;
-
         if (isChecked) {
             this.selectedFileIds = [...new Set([...this.selectedFileIds, ...visibleIds])];
         } else {
             this.selectedFileIds = this.selectedFileIds.filter(id => !visibleIds.includes(id));
         }
-
         this.refreshSelectionState();
     }
 
-    // Re-applies the current selection to the rendered rows (parents and AI children)
     refreshSelectionState() {
         this.paginatedFileList = this.paginatedFileList.map(file => ({
             ...file,
@@ -267,7 +302,6 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
         }));
     }
 
-    // Ids of every row currently rendered (paginated parents plus their expanded AI children)
     get visibleFileIds() {
         const ids = [];
         this.paginatedFileList.forEach(file => {
@@ -289,7 +323,6 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
             this.showToast('Warning', 'Please select at least one file to delete.', 'warning');
             return;
         }
-
         this.pendingDeleteIds = [...this.selectedFileIds];
         this.showDeleteModal = true;
     }
@@ -302,16 +335,10 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
     async confirmMassDelete() {
         this.showDeleteModal = false;
         this.isLoading = true;
-
         const idsToDelete = [...this.pendingDeleteIds];
-
         try {
             await deleteStoredFiles({ fileStorageIds: idsToDelete });
-            this.showToast(
-                'Success',
-                `${idsToDelete.length} file(s) deleted successfully.`,
-                'success'
-            );
+            this.showToast('Success', `${idsToDelete.length} file(s) deleted successfully.`, 'success');
             this.selectedFileIds = [];
             this.pendingDeleteIds = [];
             await refreshApex(this.wiredFileList);
@@ -326,20 +353,17 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
     handleSort(event) {
         const fieldName = event.currentTarget.dataset.field;
         const isAscending = this.sortedBy === fieldName ? this.sortDirection === 'asc' : true;
-
         this.sortedBy = fieldName;
         this.sortDirection = isAscending ? 'desc' : 'asc';
 
         const compare = (a, b) => {
             let valueA = a[fieldName];
             let valueB = b[fieldName];
-
             if (fieldName === 'sendToPortal') {
                 valueA = a.sendToPortal ? 1 : 0;
                 valueB = b.sendToPortal ? 1 : 0;
                 return isAscending ? valueA - valueB : valueB - valueA;
             }
-
             valueA = valueA?.toString().toLowerCase() || '';
             valueB = valueB?.toString().toLowerCase() || '';
             return isAscending ? valueA.localeCompare(valueB) : valueB.localeCompare(valueA);
@@ -348,7 +372,6 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
         const parents = this.fileList.filter(file => !file.isAiChild).sort(compare);
         const children = this.fileList.filter(file => file.isAiChild).sort(compare);
         this.fileList = [...parents, ...children];
-
         this.updatePaginatedFiles();
     }
 
@@ -356,7 +379,6 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
         event.stopPropagation();
         const parentId = event.currentTarget.dataset.id;
         if (!parentId) return;
-
         if (this.expandedIds.has(parentId)) {
             this.expandedIds.delete(parentId);
         } else {
@@ -390,7 +412,7 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
         try {
             sessionStorage.setItem(this.aiToggleStorageKey, String(this.showAiFiles));
         } catch (e) {
-            // sessionStorage unavailable — state remains in component memory only
+            // sessionStorage unavailable
         }
         this.updatePaginatedFiles();
     }
@@ -407,10 +429,23 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
         this.updatePaginatedFiles();
     }
 
+    // Source Type dropdown change
+    handleSourceTypeChange(event) {
+        this.selectedSourceType = event.detail.value || '';
+        this.currentPage = 1;
+        this.updatePaginatedFiles();
+    }
+
+    // Category dropdown change
+    handleCategoryChange(event) {
+        this.selectedCategory = event.detail.value || '';
+        this.currentPage = 1;
+        this.updatePaginatedFiles();
+    }
+
     toggleSearch(event) {
         event.stopPropagation();
         this.showSearch = !this.showSearch;
-
         if (!this.showSearch) {
             this.searchKey = '';
             this.searchDate = '';
@@ -434,12 +469,30 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
 
         const searchKeyLower = this.searchKey ? this.searchKey.toLowerCase() : '';
         const searchDateLower = this.searchDate ? this.searchDate.toLowerCase() : '';
+        const sourceTypeFilter = this.selectedSourceType || '';
+        const categoryFilter = this.selectedCategory || '';
 
         const matchesFilters = (file) => {
-            if (searchKeyLower && !file.name?.toLowerCase().includes(searchKeyLower)) return false;
-            if (searchDateLower && !file.serviceDateDisplay?.toLowerCase().includes(searchDateLower)) return false;
-            return true;
-        };
+    
+    if (searchKeyLower && !file.name?.toLowerCase().includes(searchKeyLower)) return false;
+   
+    if (searchDateLower && !file.serviceDateDisplay?.toLowerCase().includes(searchDateLower)) return false;
+
+    if (!sourceTypeFilter && !categoryFilter) return true;
+
+
+    const matchesSourceType = sourceTypeFilter
+        ? file.sourceType === sourceTypeFilter
+        : false;
+
+    const matchesCategory = categoryFilter
+        ? (file.category === categoryFilter || file.documentType === categoryFilter)
+        : false;
+
+    if (sourceTypeFilter && !categoryFilter) return matchesSourceType;
+    if (categoryFilter && !sourceTypeFilter) return matchesCategory;
+    return matchesSourceType || matchesCategory;
+    };
 
         const filteredParents = parents
             .map(parent => {
@@ -516,7 +569,6 @@ export default class AccountStoredFilesView extends NavigationMixin(LightningEle
 
     getFileIcon(fileType) {
         if (!fileType) return 'doctype:unknown';
-
         const fileTypeLower = fileType.toLowerCase();
         if (fileTypeLower.includes('pdf')) return 'doctype:pdf';
         if (fileTypeLower.includes('image') || fileTypeLower.includes('png') || fileTypeLower.includes('jpg')) return 'doctype:image';

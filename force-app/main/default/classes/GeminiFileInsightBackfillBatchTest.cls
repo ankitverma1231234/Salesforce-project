@@ -18,7 +18,6 @@ private class GeminiFileInsightBackfillBatchTest {
             WHERE Id = :cv.Id
         ];
 
-        Test.startTest();
         GeminiFileInsightBackfillBatch batch =
             new GeminiFileInsightBackfillBatch(true, true, cv.Id);
 
@@ -30,8 +29,6 @@ private class GeminiFileInsightBackfillBatchTest {
         );
 
         batch.execute(null, new List<ContentVersion>{ cv });
-        batch.finish(null);
-        Test.stopTest();
 
         System.assertEquals(1, batch.totalProcessed);
         System.assertEquals(1, batch.totalFailed);
@@ -53,13 +50,10 @@ private class GeminiFileInsightBackfillBatchTest {
             WHERE Id = :cv.Id
         ];
 
-        Test.startTest();
         GeminiFileInsightBackfillBatch batch =
             new GeminiFileInsightBackfillBatch(false, false, cv.Id);
 
         batch.execute(null, new List<ContentVersion>{ cv });
-        batch.finish(null);
-        Test.stopTest();
 
         System.assertEquals(1, batch.totalProcessed);
         System.assertEquals(1, batch.totalSkipped);

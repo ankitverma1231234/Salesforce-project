@@ -27,8 +27,9 @@ implements Database.Batchable<SObject>, Database.AllowsCallouts, Database.Statef
             'SELECT Id, ContentDocumentId, Title, FileType ' +
             'FROM ContentVersion ' +
             'WHERE IsLatest = true ' +
-            'AND Source__c = \'Metriport\' ' +
+            'AND Source_Type__c = \'Metriport\' ' +
             (forceRegenerate ? '' : 'AND is_AI_Summary_Generated__c = false ') +
+            'AND AI_Name_Generated__c = true ' +
             'AND (NOT Title LIKE \'%AI Generated Summary%\') ' +
             'AND FileType != \'TIF\' ' +
             'AND FirstPublishLocationId IN (SELECT Id FROM Account)';
@@ -70,7 +71,7 @@ implements Database.Batchable<SObject>, Database.AllowsCallouts, Database.Statef
             SELECT Related_File__c
             FROM ContentVersion
             WHERE Related_File__c IN :docIds
-            AND Source__c = 'AI'
+            AND Source_Type__c = 'AI'
             AND IsLatest = true
         ]) {
             if (aiCv.Related_File__c != null) {

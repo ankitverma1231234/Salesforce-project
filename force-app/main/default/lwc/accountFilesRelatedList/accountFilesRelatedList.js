@@ -2,13 +2,12 @@ import { LightningElement, api, wire, track } from 'lwc';
 import { NavigationMixin } from 'lightning/navigation';
 import { refreshApex } from '@salesforce/apex';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
-import { subscribe, unsubscribe, onError } from 'lightning/empApi';
 
 import getAccountFiles from '@salesforce/apex/AccountFilesController.getAccountFiles';
 import deleteFiles from '@salesforce/apex/AccountFilesController.deleteFiles';
 
 // File Icon Map
-const FILE_ICON_MAP = {
+const FILE_ICON_MAP = { 
     pdf: 'doctype:pdf',
     doc: 'doctype:word',
     docx: 'doctype:word',
@@ -45,9 +44,7 @@ const FILE_ICON_MAP = {
 };
 
 const PREVIEW_LIMIT = 6;
-const CHANNEL = '/event/Account_File_Change__e';
 
-// Datatable Columns
 const COLUMNS = [
     
     {
@@ -57,7 +54,7 @@ const COLUMNS = [
     typeAttributes: {
         label: { fieldName: 'title' },
         target: '_blank',
-        tooltip: { fieldName: 'title' } // 👈 THIS IS THE FIX
+        tooltip: { fieldName: 'title' } 
     },
     cellAttributes: {
         iconName: { fieldName: 'iconName' },
@@ -74,7 +71,7 @@ const COLUMNS = [
     wrapText: false,
     initialWidth: 200,
     cellAttributes: {
-        title: { fieldName: 'description' } // 👈 ADD THIS
+        title: { fieldName: 'description' } 
     }
 },
        
@@ -145,7 +142,7 @@ export default class AccountFilesRelatedList extends NavigationMixin(LightningEl
 
     wiredResult;
     _pendingDeleteIds = [];
-    _subscription = null;
+    _autoRefreshInterval = null;
 
     acceptedFormats = [
         '.pdf','.doc','.docx','.xls','.xlsx','.csv','.ppt','.pptx',
@@ -155,42 +152,28 @@ export default class AccountFilesRelatedList extends NavigationMixin(LightningEl
 
     // ─── Lifecycle ────────────────────────────────
     connectedCallback() {
-        this._subscribeToEvents();
+        console.log('[accountFilesRelatedList] connectedCallback called');
+        this._scheduleRefresh();
+    }
+    _scheduleRefresh() {
+        // eslint-disable-next-line @lwc/lwc/no-async-operation
+        this._autoRefreshInterval = setTimeout(() => {
+            console.log('[accountFilesRelatedList] refresh tick — wiredResult:', this.wiredResult ? 'present' : 'NULL');
+            if (this.wiredResult) {
+                refreshApex(this.wiredResult)
+                    .then(() => {
+                        console.log('[accountFilesRelatedList] refreshApex done — files:', this.allFiles.length);
+                    })
+                    .catch(e => console.error('[accountFilesRelatedList] refreshApex error:', e));
+            }
+            this._scheduleRefresh();
+        }, 10000);
     }
 
     disconnectedCallback() {
-        this._unsubscribeFromEvents();
-    }
-
-    // ─── Platform Events ──────────────────────────
-    _subscribeToEvents() {
-        onError(error => {
-            console.error('empApi error:', JSON.stringify(error));
-        });
-
-        subscribe(CHANNEL, -1, (event) => {
-            this._handlePlatformEvent(event);
-        })
-        .then(subscription => {
-            this._subscription = subscription;
-        })
-        .catch(error => {
-            console.error('empApi subscribe error:', JSON.stringify(error));
-        });
-    }
-
-    _unsubscribeFromEvents() {
-        if (this._subscription) {
-            unsubscribe(this._subscription, () => {});
-            this._subscription = null;
-        }
-    }
-
-    _handlePlatformEvent(event) {
-        const payload = event.data.payload;
-
-        if (payload.Account_Id__c && payload.Account_Id__c === this.recordId) {
-            this.refreshData();
+        if (this._autoRefreshInterval) {
+            clearTimeout(this._autoRefreshInterval);
+            this._autoRefreshInterval = null;
         }
     }
 
@@ -349,6 +332,7 @@ export default class AccountFilesRelatedList extends NavigationMixin(LightningEl
             state: { c__recordId: this.recordId }
         });
     }
+
 
     // ─── Utilities ────────────────────────────────
     getFileIcon(fileType) {

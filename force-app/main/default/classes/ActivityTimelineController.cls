@@ -172,7 +172,7 @@ public with sharing class ActivityTimelineController {
 
         // --- SENT FAX ---
         for (efaxapp__Sent_Fax__c sf : [
-            SELECT Id, Name, efaxapp__Fax_Number__c, efaxapp__Status__c, CreatedDate
+            SELECT Id, Name, efaxapp__Status__c,efaxapp__Subject__c,efaxapp__Send_Date__c
             FROM efaxapp__Sent_Fax__c
             WHERE efaxapp__Account__c = :recordId
             ORDER BY CreatedDate DESC
@@ -182,15 +182,15 @@ public with sharing class ActivityTimelineController {
                 sf.Id,
                 'SentFax',
                 sf.Name,
-                sf.efaxapp__Fax_Number__c,
+                sf.efaxapp__Subject__c,
                 sf.efaxapp__Status__c,
-                sf.CreatedDate
+                sf.efaxapp__Send_Date__c
             ));
         }
 
         // --- RECEIVED FAX ---
         for (efaxapp__Received_Fax__c rf : [
-            SELECT Id, Name, efaxapp__Fax_Number__c, efaxapp__Status__c, CreatedDate
+            SELECT Id, Name,efaxapp__Status__c,efaxapp__Received_Date__c
             FROM efaxapp__Received_Fax__c
             WHERE efaxapp__Account__c = :recordId
             ORDER BY CreatedDate DESC
@@ -200,9 +200,9 @@ public with sharing class ActivityTimelineController {
                 rf.Id,
                 'ReceivedFax',
                 rf.Name,
-                rf.efaxapp__Fax_Number__c,
+                '',
                 rf.efaxapp__Status__c,
-                rf.CreatedDate
+                rf.efaxapp__Received_Date__c
             ));
         }
 

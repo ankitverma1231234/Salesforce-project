@@ -1,5 +1,4 @@
-public class GeneratePdfQueueable
-implements Queueable, Database.AllowsCallouts {
+public class GeneratePdfQueueable implements Queueable, Database.AllowsCallouts {
 
     private String recordId;
     private String requestBody;

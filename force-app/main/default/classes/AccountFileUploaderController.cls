@@ -1,7 +1,16 @@
 public with sharing class AccountFileUploaderController {
 
     @AuraEnabled
-    public static UploadResult confirmUpload(Id accountId, List<Id> contentDocumentIds) {
+    public static UploadResult confirmUpload(
+        Id accountId,
+        List<Id> contentDocumentIds,
+        String uploadMetadataJson
+    ) {
+        UploadMetadata uploadMetadata = (UploadMetadata) JSON.deserialize(
+            uploadMetadataJson,
+            UploadMetadata.class
+        );
+
         if (accountId == null) {
             throw new AuraHandledException('Account Id is required.');
         }
@@ -9,27 +18,21 @@ public with sharing class AccountFileUploaderController {
             throw new AuraHandledException('At least one ContentDocumentId is required.');
         }
 
-        Schema.DescribeSObjectResult accDescribe = Account.SObjectType.getDescribe();
-        if (!accDescribe.isAccessible()) {
-            throw new AuraHandledException('You do not have access to the Account object.');
-        }
-
         List<Account> accounts = [
             SELECT Id, Name
             FROM Account
             WHERE Id = :accountId
-            WITH SECURITY_ENFORCED
             LIMIT 1
         ];
         if (accounts.isEmpty()) {
-            throw new AuraHandledException('Account not found or not accessible.');
+            throw new AuraHandledException('Account not found.');
         }
 
         Set<Id> existingLinkedDocIds = new Set<Id>();
         for (ContentDocumentLink cdl : [
             SELECT ContentDocumentId
             FROM ContentDocumentLink
-            WHERE LinkedEntityId = :accountId
+            WHERE LinkedEntityId  = :accountId
               AND ContentDocumentId IN :contentDocumentIds
         ]) {
             existingLinkedDocIds.add(cdl.ContentDocumentId);
@@ -39,23 +42,24 @@ public with sharing class AccountFileUploaderController {
         for (Id docId : contentDocumentIds) {
             if (!existingLinkedDocIds.contains(docId)) {
                 ContentDocumentLink cdl = new ContentDocumentLink();
-                cdl.ContentDocumentId = docId;
-                cdl.LinkedEntityId    = accountId;
-                cdl.ShareType         = 'V';
-                cdl.Visibility        = 'AllUsers';
+                cdl.ContentDocumentId  = docId;
+                cdl.LinkedEntityId     = accountId;
+                cdl.ShareType          = 'V';
+                cdl.Visibility         = 'AllUsers';
                 linksToInsert.add(cdl);
             }
         }
-
         if (!linksToInsert.isEmpty()) {
             try {
                 insert linksToInsert;
             } catch (DmlException e) {
-                throw new AuraHandledException('Unable to link uploaded file(s) to the Account: ' + e.getMessage());
+                throw new AuraHandledException(
+                    'Unable to link uploaded file(s) to the Account: ' + e.getMessage()
+                );
             }
         }
-        
 
+        // ── Fetch the latest ContentVersion(s) for the uploaded documents ─────
         List<ContentVersion> versions = [
             SELECT Id, ContentDocumentId, Title, FileType, ContentSize
             FROM ContentVersion
@@ -63,15 +67,18 @@ public with sharing class AccountFileUploaderController {
               AND IsLatest = true
         ];
 
+        
+        applyUploadMetadata(versions, uploadMetadata);
 
-        UploadResult result = new UploadResult();
-        result.accountId   = accountId;
-        result.accountName = accounts[0].Name;
+        // ── Build result ──────────────────────────────────────────────────────
+        UploadResult result  = new UploadResult();
+        result.accountId     = accountId;
+        result.accountName   = accounts[0].Name;
         result.uploadedFiles = new List<UploadedFile>();
 
         List<Id> versionIds = new List<Id>();
         for (ContentVersion cv : versions) {
-            UploadedFile uf = new UploadedFile();
+            UploadedFile uf      = new UploadedFile();
             uf.contentVersionId  = cv.Id;
             uf.contentDocumentId = cv.ContentDocumentId;
             uf.title             = cv.Title;
@@ -81,11 +88,12 @@ public with sharing class AccountFileUploaderController {
             versionIds.add(cv.Id);
         }
 
+        // ── Create processing logs ────────────────────────────────────────────
         LogCreationResult logResult = createProcessingLogs(versionIds);
-        result.logsCreated       = logResult.created;
-        result.logsSkipped       = logResult.skippedExisting;
-        result.logCreationFailed = logResult.failed;
-        result.logCreationError  = logResult.errorMessage;
+        result.logsCreated          = logResult.created;
+        result.logsSkipped          = logResult.skippedExisting;
+        result.logCreationFailed    = logResult.failed;
+        result.logCreationError     = logResult.errorMessage;
 
         if (logResult.failed) {
             throw new AuraHandledException(
@@ -94,62 +102,117 @@ public with sharing class AccountFileUploaderController {
             );
         }
 
-        // Upload success boundary: ContentDocument records exist, Account links
-        // are confirmed, and processing logs are handled. Queue external sync
-        // without changing the existing successful upload UX if sync setup fails.
+        // ── Sync content documents to external service ────────────────────────
         AccountFileExternalSyncService.SyncResult syncResult =
-            AccountFileExternalSyncService.queueContentDocumentSync(contentDocumentIds);
-        result.syncQueued = syncResult.queued;
-        result.syncJobId = syncResult.jobId;
-        result.syncFailed = syncResult.failed;
-        result.syncError = syncResult.errorMessage;
+        AccountFileExternalSyncService.queueContentDocumentSync(contentDocumentIds);
+        result.syncQueued           = syncResult.queued;
+        result.syncJobId            = syncResult.jobId;
+        result.syncFailed           = syncResult.failed;
+        result.syncError            = syncResult.errorMessage;
         result.syncSkippedDuplicate = syncResult.skippedDuplicate;
-         DateTime scheduledTime = DateTime.now().addMinutes(2);
+
+        DateTime scheduledTime = DateTime.now().addMinutes(2);
         String cronExp = String.format(
             '0 {0} {1} {2} {3} ? {4}',
             new List<String>{
                 String.valueOf(scheduledTime.minute()),
-                    String.valueOf(scheduledTime.hour()),
-                    String.valueOf(scheduledTime.day()),
-                    String.valueOf(scheduledTime.month()),
-                    String.valueOf(scheduledTime.year())
-                    }
+                String.valueOf(scheduledTime.hour()),
+                String.valueOf(scheduledTime.day()),
+                String.valueOf(scheduledTime.month()),
+                String.valueOf(scheduledTime.year())
+            }
         );
-          String jobName = 'FileStoragePublicUrlBackfillBatch_' + DateTime.now().getTime();
-          Datetime uploadServiceDate = System.now();
-           System.schedule(
-            jobName,
+        System.schedule(
+            'FileStoragePublicUrlBackfillBatch_' + DateTime.now().getTime(),
             cronExp,
-            new FileStoragePublicUrlBackfillBatch(false, uploadServiceDate)
+            new FileStoragePublicUrlBackfillBatch(false, System.now())
         );
-
 
         return result;
     }
 
+    private static void applyUploadMetadata(
+        List<ContentVersion> versions,
+        UploadMetadata uploadMetadata
+    ) {
+        if (versions == null || versions.isEmpty() || uploadMetadata == null) return;
+
+        String title       = normalize(uploadMetadata.title);
+        String sourceType  = normalize(uploadMetadata.sourceType);
+        String category    = normalize(uploadMetadata.category);
+        String description = normalize(uploadMetadata.description);
+
+        Datetime serviceDateTime = null;
+        if (String.isNotBlank(uploadMetadata.serviceDateTime)) {
+            try {
+                serviceDateTime = (Datetime) JSON.deserialize(
+                    '"' + uploadMetadata.serviceDateTime + '"',
+                    Datetime.class
+                );
+            } catch (Exception e) {
+                System.debug(LoggingLevel.WARN,
+                    'applyUploadMetadata: could not parse serviceDateTime "'
+                    + uploadMetadata.serviceDateTime + '": ' + e.getMessage());
+            }
+        }
+
+        List<ContentVersion> toUpdate = new List<ContentVersion>();
+        for (ContentVersion cv : versions) {
+            ContentVersion upd = new ContentVersion(Id = cv.Id);
+            Boolean changed    = false;
+
+            if (String.isNotBlank(title)) {
+                upd.Title = title;
+                cv.Title  = title;
+                changed   = true;
+            }
+            if (String.isNotBlank(sourceType)) {
+                upd.Source_Type__c = sourceType;
+                changed = true;
+            }
+            if (String.isNotBlank(category)) {
+                upd.Category__c = category;
+                changed = true;
+            }
+            if (String.isNotBlank(description)) {
+                upd.Description = description;
+                cv.Description  = description;
+                changed         = true;
+            }
+            if (serviceDateTime != null) {
+                upd.Service_Date_Time__c = serviceDateTime;
+                changed = true;
+            }
+
+            if (changed) toUpdate.add(upd);
+        }
+
+        if (toUpdate.isEmpty()) return;
+
+        try {
+            update toUpdate;
+        } catch (DmlException e) {
+            throw new AuraHandledException(
+                'Unable to update file details: ' + e.getMessage()
+            );
+        }
+    }
+
+    private static String normalize(String value) {
+        return String.isBlank(value) ? null : value.trim();
+    }
+
+    // ── Create Document_Processing_Log__c records (skip duplicates) ───────────
     private static LogCreationResult createProcessingLogs(List<Id> contentVersionIds) {
         LogCreationResult res = new LogCreationResult();
         res.created         = 0;
         res.skippedExisting = 0;
         res.failed          = false;
 
-        if (contentVersionIds == null || contentVersionIds.isEmpty()) {
-            return res;
-        }
-
-        Schema.DescribeSObjectResult logDescribe = Document_Processing_Log__c.SObjectType.getDescribe();
-        if (!logDescribe.isCreateable()) {
-            res.failed       = true;
-            res.errorMessage = 'You do not have permission to create Document Processing Log records.';
-            System.debug(LoggingLevel.ERROR,
-                'AccountFileUploaderController.createProcessingLogs: ' + res.errorMessage);
-            return res;
-        }
+        if (contentVersionIds == null || contentVersionIds.isEmpty()) return res;
 
         Set<String> versionIdStrings = new Set<String>();
-        for (Id vid : contentVersionIds) {
-            versionIdStrings.add(String.valueOf(vid));
-        }
+        for (Id vid : contentVersionIds) versionIdStrings.add(String.valueOf(vid));
 
         Set<String> existingVersionIds = new Set<String>();
         for (Document_Processing_Log__c existing : [
@@ -174,9 +237,7 @@ public with sharing class AccountFileUploaderController {
             logsToInsert.add(log);
         }
 
-        if (logsToInsert.isEmpty()) {
-            return res;
-        }
+        if (logsToInsert.isEmpty()) return res;
 
         try {
             insert logsToInsert;
@@ -184,41 +245,48 @@ public with sharing class AccountFileUploaderController {
         } catch (DmlException e) {
             res.failed       = true;
             res.errorMessage = e.getDmlMessage(0) != null ? e.getDmlMessage(0) : e.getMessage();
-            System.debug(LoggingLevel.ERROR,
-                'AccountFileUploaderController.createProcessingLogs DML failure: ' +
-                e.getMessage() + '\n' + e.getStackTraceString());
-        } catch (Exception e) {
-            res.failed       = true;
-            res.errorMessage = e.getMessage();
-            System.debug(LoggingLevel.ERROR,
-                'AccountFileUploaderController.createProcessingLogs unexpected error: ' +
-                e.getMessage() + '\n' + e.getStackTraceString());
-        }
+        } 
 
         return res;
     }
 
+    // ── Inner classes ─────────────────────────────────────────────────────────
+
     public class UploadResult {
-        @AuraEnabled public Id accountId;
-        @AuraEnabled public String accountName;
+        @AuraEnabled public Id                 accountId;
+        @AuraEnabled public String             accountName;
         @AuraEnabled public List<UploadedFile> uploadedFiles;
-        @AuraEnabled public Integer logsCreated;
-        @AuraEnabled public Integer logsSkipped;
-        @AuraEnabled public Boolean logCreationFailed;
-        @AuraEnabled public String logCreationError;
-        @AuraEnabled public Boolean syncQueued;
-        @AuraEnabled public Id syncJobId;
-        @AuraEnabled public Boolean syncFailed;
-        @AuraEnabled public String syncError;
-        @AuraEnabled public Boolean syncSkippedDuplicate;
+        @AuraEnabled public Integer            logsCreated;
+        @AuraEnabled public Integer            logsSkipped;
+        @AuraEnabled public Boolean            logCreationFailed;
+        @AuraEnabled public String             logCreationError;
+        @AuraEnabled public Boolean            syncQueued;
+        @AuraEnabled public String             syncJobId;
+        @AuraEnabled public Boolean            syncFailed;
+        @AuraEnabled public String             syncError;
+        @AuraEnabled public Boolean            syncSkippedDuplicate;
     }
 
     public class UploadedFile {
-        @AuraEnabled public Id contentVersionId;
-        @AuraEnabled public Id contentDocumentId;
-        @AuraEnabled public String title;
-        @AuraEnabled public String fileType;
+        @AuraEnabled public Id      contentVersionId;
+        @AuraEnabled public Id      contentDocumentId;
+        @AuraEnabled public String  title;
+        @AuraEnabled public String  fileType;
         @AuraEnabled public Integer contentSize;
+    }
+
+    public class UploadMetadata {
+        @AuraEnabled public String title;
+        @AuraEnabled public String documentType;
+        @AuraEnabled public String serviceDateTime;
+        @AuraEnabled public String description;
+        @AuraEnabled public String sourceType;
+        @AuraEnabled public String category;
+    }
+
+    public class PicklistOption {
+        @AuraEnabled public String label;
+        @AuraEnabled public String value;
     }
 
     private class LogCreationResult {

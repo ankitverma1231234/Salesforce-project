@@ -318,7 +318,7 @@ private class DocumentPipelineQueueableTest {
         update new ContentVersion(
             Id = version.Id,
             Description = 'Test Description',
-            Source__c = 'Metriport',
+            Source_Type__c = 'Metriport',
             Organization_Name__c = 'Test Organization',
             Service_Date_Time__c = System.now()
         );
@@ -341,11 +341,11 @@ private class DocumentPipelineQueueableTest {
         );
         update new ContentVersion(
             Id = version.Id,
-            Source__c = 'AI',
+            Source_Type__c = 'AI',
             Related_File__c = String.valueOf(sourceContentDocumentId)
         );
         return [
-            SELECT Id, ContentDocumentId, Title, FileType, Source__c,
+            SELECT Id, ContentDocumentId, Title, FileType, Source_Type__c,
                    Related_File__c
             FROM ContentVersion
             WHERE Id = :version.Id

@@ -81,7 +81,7 @@ ContentVersion cv = new ContentVersion(
     Title = 'Test File',
     PathOnClient = 'TestFile.pdf',
     VersionData = Blob.valueOf('Test Content'),
-    Source__c = 'Metriport'
+    Source_Type__c = 'Metriport'
 );
 insert cv;
 

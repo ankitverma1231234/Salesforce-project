@@ -43,7 +43,7 @@ public class GeminiFileSummaryQueueable implements Queueable, Database.AllowsCal
 
         // Text-based files: decode blob to string directly
         Set<String> textTypes = new Set<String>{
-            'TXT', 'CSV', 'XML', 'HTML', 'JSON', 'RTF', 'LOG', 'MD'
+            'TEXT', 'TXT', 'CSV', 'XML', 'HTML', 'JSON', 'RTF', 'LOG', 'MD'
         };
 
         if (textTypes.contains(fileType)) {

@@ -6,23 +6,6 @@ public with sharing class AccountFilesController {
             throw new AuraHandledException('Account Id is required.');
         }
 
-        // Get ContentDocumentIds linked to this Account
-        List<ContentDocumentLink> cdLinks = [
-            SELECT ContentDocumentId
-            FROM ContentDocumentLink
-            WHERE LinkedEntityId = :accountId
-        ];
-
-        if (cdLinks.isEmpty()) {
-            return new List<FileWrapper>();
-        }
-
-        Set<Id> contentDocIds = new Set<Id>();
-        for (ContentDocumentLink cdl : cdLinks) {
-            contentDocIds.add(cdl.ContentDocumentId);
-        }
-
-        // Get latest ContentVersion for each ContentDocument
         List<ContentVersion> versions = [
             SELECT Id,
                    ContentDocumentId,
@@ -35,7 +18,7 @@ public with sharing class AccountFilesController {
                    Source_Type__c,
                    Related_File__c
             FROM ContentVersion
-            WHERE ContentDocumentId IN :contentDocIds
+            WHERE FirstPublishLocationId = :accountId
               AND IsLatest = true
             ORDER BY LastModifiedDate DESC
         ];

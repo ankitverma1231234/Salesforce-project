@@ -32,7 +32,7 @@ public class DocumentProcessingPipelineQueueable implements Queueable, Database.
     private void handleAttachment() {
 
         ContentVersion cv = [
-            SELECT Title, Description, Source__c,
+            SELECT Title, Description, Source_Type__c,
                    Organization_Name__c, Service_Date_Time__c,
                    PathOnClient, FileType
             FROM ContentVersion
@@ -44,7 +44,7 @@ public class DocumentProcessingPipelineQueueable implements Queueable, Database.
             'contentVersionId'  => contentVersionId,
             'title'             => cv.Title,
             'description'       => cv.Description,
-            'source'            => cv.Source__c,
+            'source'            => cv.Source_Type__c,
             'organizationName'  => cv.Organization_Name__c,
             'serviceDatetime'   => cv.Service_Date_Time__c != null
                                        ? String.valueOf(cv.Service_Date_Time__c)
@@ -131,11 +131,11 @@ public class DocumentProcessingPipelineQueueable implements Queueable, Database.
         }
 
         List<ContentVersion> sourceVersions = [
-            SELECT Id, ContentDocumentId, Title, FileType, Source__c, Related_File__c
+            SELECT Id, ContentDocumentId, Title, FileType, Source_Type__c, Related_File__c
             FROM ContentVersion
             WHERE Id = :contentVersionId
             AND IsLatest = true
-            AND Source__c = 'Metriport'
+            AND Source_Type__c = 'Metriport'
             AND FileType = 'PDF'
             LIMIT 1
         ];
@@ -153,11 +153,11 @@ public class DocumentProcessingPipelineQueueable implements Queueable, Database.
         }
 
         List<ContentVersion> aiSummaryVersions = [
-            SELECT Id, ContentDocumentId, Title, FileType, Source__c, Related_File__c
+            SELECT Id, ContentDocumentId, Title, FileType, Source_Type__c, Related_File__c
             FROM ContentVersion
             WHERE Related_File__c = :sourceVersion.ContentDocumentId
             AND IsLatest = true
-            AND Source__c = 'AI'
+            AND Source_Type__c = 'AI'
             AND FileType = 'PDF'
             ORDER BY CreatedDate DESC
             LIMIT 1

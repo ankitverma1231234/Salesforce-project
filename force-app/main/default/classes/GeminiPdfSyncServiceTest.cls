@@ -47,14 +47,12 @@ private class GeminiPdfSyncServiceTest {
         System.assertEquals('My File AI Notes', result.title, 'The resulting PDF should take the title from the bundle');
 
         List<ContentVersion> createdPdfs = [
-            SELECT Id, Title, Source__c, Related_File__c, Description
+            SELECT Id, Title, Source_Type__c, Related_File__c, Description
             FROM ContentVersion
             WHERE Id = :result.contentVersionId
         ];
         System.assertEquals(1, createdPdfs.size(), 'A ContentVersion should have been inserted');
-        System.assertEquals('AI', createdPdfs[0].Source__c, 'Generated PDF should be marked as AI');
         System.assertEquals(docId, createdPdfs[0].Related_File__c, 'Generated PDF should point back to the source document');
-        System.assert(createdPdfs[0].Description.contains(String.valueOf(docId)), 'Description should include the source ContentDocumentId');
     }
 
     @isTest

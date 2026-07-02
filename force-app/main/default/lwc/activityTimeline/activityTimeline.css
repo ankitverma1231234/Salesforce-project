@@ -64,3 +64,21 @@ height: 20px;
 .slds-media__figure lightning-icon {
 margin-top: 0.2rem;
 }
+.slds-media__figure {
+    display: flex;
+    align-items: flex-start;
+    padding-top: 0.2rem;
+    min-width: 28px;
+}
+
+.slds-media__figure lightning-icon,
+.slds-media__figure img.custom-icon-small {
+    margin-top: 0;
+}
+.slds-media__figure lightning-icon[icon-name="doctype:overlay"] {
+    transform: scale(0.75);
+    transform-origin: left center;
+}
+.filter-checkbox {
+    margin-right: -8px; /* pulls the icon in, adjust value as needed */
+}

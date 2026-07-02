@@ -130,28 +130,76 @@ public class MedicalSalesforceDeleteRecordTest {
         Test.stopTest();        
         System.assert(true, 'Test completed successfully');
     }
+   
     @IsTest
-    static void testDeleteClassMethods() {
+    static void testNullAndEmptyGuards() {
         Test.setMock(HttpCalloutMock.class, new SuccessMock());
-        Id anyId = [SELECT Id FROM Account LIMIT 1].Id;
         Test.startTest();
-        MedicalSalesforceDeleteRecord.deleteRecordFromThirdParty(
-            new Set<Id>{ anyId },
-            'Account');
-        MedicalSalesforceDeleteRecord.deleteRecordsFuture(
-            JSON.serialize(new List<Id>{ anyId }),
-            'Account');
+        // null and empty sets should simply return without enqueueing
+        MedicalSalesforceDeleteRecord.deleteRecordFromThirdParty(null, 'Case');
+        MedicalSalesforceDeleteRecord.deleteRecordFromThirdParty(new Set<Id>(), 'Case');
         Test.stopTest();
         System.assert(true);
     }
     @IsTest
-    static void testNullAndEmptyGuards() {
+    static void testDeleteRecordsQueueable_DirectExecution() {
+        Test.setMock(HttpCalloutMock.class, new SuccessMock());
+        Account pa = getPersonAccount();
+
+        // Build a sample set of fake/real ids to push through the queueable
+        Set<Id> idsToDelete = new Set<Id>{ pa.Id };
+
         Test.startTest();
-        MedicalSalesforceDeleteRecord.deleteRecordFromThirdParty(null, 'Case');
-        MedicalSalesforceDeleteRecord.deleteRecordFromThirdParty(new Set<Id>(), 'Case');
-        MedicalSalesforceDeleteRecord.deleteRecordsFuture('[]', 'Case');
+        MedicalSalesforceDeleteRecord.deleteRecordFromThirdParty(idsToDelete, 'Account');
+        Test.stopTest(); // executes the enqueued DeleteRecordsQueueable synchronously
+
+        System.assert(true, 'Queueable executed without errors');
+    }
+    @IsTest
+    static void testDeleteRecordsQueueable_LargeBatch_MultipleChunks() {
+        Test.setMock(HttpCalloutMock.class, new SuccessMock());
+
+        // Generate > 10 fake Ids to verify internal chunking logic (BATCH_SIZE = 10)
+        Set<Id> idsToDelete = new Set<Id>();
+        for (Integer i = 0; i < 25; i++) {
+            idsToDelete.add(generateFakeId('001', i));
+        }
+
+        Test.startTest();
+        MedicalSalesforceDeleteRecord.deleteRecordFromThirdParty(idsToDelete, 'Contact');
         Test.stopTest();
-        System.assert(true);
+
+        System.assert(true, 'Large batch processed across multiple chunks without errors');
+    }
+    @IsTest
+    static void testDeleteRecordsQueueable_NoApiConfig() {
+        // No SuccessMock callout needed since config check should short-circuit
+        Set<Id> idsToDelete = new Set<Id>{ generateFakeId('001', 1) };
+
+        Test.startTest();
+        MedicalSalesforceDeleteRecord.deleteRecordFromThirdParty(idsToDelete, 'Case');
+        Test.stopTest();
+
+        System.assert(true, 'Handled missing API config gracefully');
+    }
+    @IsTest
+    static void testGetJsonKeyForRecordType_KnownAndUnknown() {
+        System.assertEquals('allergies', MedicalSalesforceDeleteRecord.getJsonKeyForRecordType('AllergyIntolerance'));
+        System.assertEquals('basic_details', MedicalSalesforceDeleteRecord.getJsonKeyForRecordType('Account'));
+        System.assertEquals('documents', MedicalSalesforceDeleteRecord.getJsonKeyForRecordType('fra__File_Storage__c'));
+        // Unknown type falls back to lowercase
+        System.assertEquals('unknownobject', MedicalSalesforceDeleteRecord.getJsonKeyForRecordType('UnknownObject'));
+    }
+    @IsTest
+    static void testBuildDeletePayload() {
+        Set<Id> idsToDelete = new Set<Id>{ generateFakeId('001', 1), generateFakeId('001', 2) };
+        List<Id> idList = new List<Id>(idsToDelete);
+
+        Map<String, Object> payload = MedicalSalesforceDeleteRecord.buildDeletePayload(idList, 'AllergyIntolerance');
+        System.assert(payload.containsKey('allergies'), 'Payload should contain allergies key');
+
+        List<Object> items = (List<Object>) payload.get('allergies');
+        System.assertEquals(2, items.size(), 'Payload should contain both ids');
     }
     @IsTest
     static void testCaseTriggerCoverage() {
@@ -169,5 +217,12 @@ public class MedicalSalesforceDeleteRecordTest {
         delete c;        
         Test.stopTest();
         System.assert(true); 
+    }
+
+    private static Id generateFakeId(String keyPrefix, Integer counter) {
+        String prefix = keyPrefix;
+        String suffix = String.valueOf(counter);
+        String idPrefix = prefix + '0'.repeat(15 - prefix.length() - suffix.length()) + suffix;
+        return Id.valueOf(idPrefix);
     }
 }

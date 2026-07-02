@@ -109,7 +109,7 @@ implements Schedulable, Database.Batchable<SObject>, Database.AllowsCallouts, Da
                 CreatedDate,
                 AI_Generated_File_Name__c,
                 AI_Name_Generated__c,
-                Source__c
+                Source_Type__c
                 FROM   ContentVersion
                 WHERE  Id       = :contentVersionId
                 AND    IsLatest = true
@@ -120,10 +120,10 @@ implements Schedulable, Database.Batchable<SObject>, Database.AllowsCallouts, Da
         // ── Scheduler / bulk flow: original query unchanged ──
         return Database.getQueryLocator(
             'SELECT Id,ContentDocumentId,VersionData,Title,FileType,CreatedDate,'
-            + 'AI_Generated_File_Name__c,AI_Name_Generated__c,Source__c '
+            + 'AI_Generated_File_Name__c,AI_Name_Generated__c,Source_Type__c '
             + 'FROM ContentVersion '
             + 'WHERE IsLatest = true '
-            + 'AND Source__c = \'Metriport\' '
+            + 'AND Source_Type__c = \'Metriport\' '
             + 'AND AI_Name_Generated__c = false '
             + 'AND (AI_Generated_File_Name__c = null OR AI_Generated_File_Name__c = \'\') '
             + 'AND FileType != \'TIF\' '
@@ -136,82 +136,184 @@ implements Schedulable, Database.Batchable<SObject>, Database.AllowsCallouts, Da
     // ──────────────────────────────────────────────
     
     public void execute(Database.BatchableContext context, List<SObject> scope) {
+        
         if (scope.isEmpty()) {
             return;
         }
         
         List<AI_File_Naming_Rule__c> rules = getActiveRules();
+        
         if (rules.isEmpty()) {
             totalSkipped += scope.size();
             return;
         }
         
-        String jobId = context != null ? String.valueOf(context.getJobId()) : null;
+        String jobId = context != null
+            ? String.valueOf(context.getJobId())
+            : null;
+        
         AiFileNamingLogger logger = new AiFileNamingLogger(jobId);
         
-        // Collect ContentDocumentIds to resolve linked Accounts
+        // Collect ContentDocumentIds
         Map<Id, ContentVersion> docToVersion = new Map<Id, ContentVersion>();
         Set<Id> contentDocumentIds = new Set<Id>();
+        
         for (SObject item : scope) {
-            ContentVersion cv = (ContentVersion) item;
-            docToVersion.put(cv.ContentDocumentId, cv);
-            contentDocumentIds.add(cv.ContentDocumentId);
+            ContentVersion cv = (ContentVersion)item;
+            
+            docToVersion.put(
+                cv.ContentDocumentId,
+                cv
+            );
+            
+            contentDocumentIds.add(
+                cv.ContentDocumentId
+            );
         }
         
-        // Resolve ContentDocument → Account via ContentDocumentLink
-        Map<Id, Id> docToAccountId = resolveLinkedAccounts(contentDocumentIds);
+        // Resolve Account mapping
+        Map<Id, Id> docToAccountId =
+            resolveLinkedAccounts(contentDocumentIds);
+        
         if (docToAccountId.isEmpty()) {
             totalSkipped += scope.size();
             return;
         }
         
-        Map<Id, Account> accounts = new Map<Id, Account>([
-            SELECT Id, Name
-            FROM Account
-            WHERE Id IN :docToAccountId.values()
-        ]);
+        Map<Id, Account> accounts =
+            new Map<Id, Account>([
+                SELECT Id, Name
+                FROM Account
+                WHERE Id IN :docToAccountId.values()
+            ]);
         
-        // Process each record individually
-        List<ContentVersion> updates = new List<ContentVersion>();
+        List<ContentVersion> updates =
+            new List<ContentVersion>();
+        
         for (Id contentDocumentId : docToVersion.keySet()) {
-            ContentVersion cv = docToVersion.get(contentDocumentId);
-            Id accountId = docToAccountId.get(contentDocumentId);
             
-            if (accountId == null || !accounts.containsKey(accountId)) {
+            ContentVersion cv =
+                docToVersion.get(contentDocumentId);
+            
+            Id accountId =
+                docToAccountId.get(contentDocumentId);
+            
+            if (
+                accountId == null ||
+                !accounts.containsKey(accountId)
+            ) {
                 totalSkipped++;
                 continue;
             }
             
-            Account accountRecord = accounts.get(accountId);
+            Account accountRecord =
+                accounts.get(accountId);
+            
             totalProcessed++;
             
-            Long startTime = System.currentTimeMillis();
+            Long startTime =
+                System.currentTimeMillis();
+            
             try {
+                
                 AiFileNamingCalloutService.CalloutResult calloutResult =
-                    AiFileNamingCalloutService.generateFileName(rules, accountRecord, cv);
+                    AiFileNamingCalloutService.generateFileName(
+                        rules,
+                        accountRecord,
+                        cv
+                    );
                 
-                Long elapsed = System.currentTimeMillis() - startTime;
+                Long elapsed =
+                    System.currentTimeMillis() - startTime;
                 
-                if (calloutResult.success && String.isNotBlank(calloutResult.fileName)) {
-                    ContentVersion updateRecord = new ContentVersion(Id = cv.Id);
-                    updateRecord.AI_Generated_File_Name__c = calloutResult.fileName.left(255);
-                    updateRecord.Title                     = calloutResult.fileName.left(255);
-                    updateRecord.AI_Name_Generated__c      = true;
+                if (
+                    calloutResult.success &&
+                    String.isNotBlank(
+                        calloutResult.fileName
+                    )
+                ) {
+                    
+                    String generatedTitle =
+                        calloutResult.fileName.left(255);
+                    
+                    ContentVersion updateRecord =
+                        new ContentVersion(
+                            Id = cv.Id
+                        );
+                    
+                    updateRecord.AI_Generated_File_Name__c =
+                        generatedTitle;
+                    
+                    updateRecord.Title =
+                        generatedTitle;
+                    
+                    updateRecord.AI_Name_Generated__c =
+                        true;
+                    
+                    /*
+Populate Service_Date_Time__c
+if title begins with yyyy-MM-dd
+*/
+                    
+                    try {
+                        
+                        if (
+                            generatedTitle.length() >= 10 &&
+                            Pattern.matches(
+                                '^\\d{4}-\\d{2}-\\d{2}.*',
+                                generatedTitle
+                            )
+                        ) {
+                            
+                            String dateStr =
+                                generatedTitle.substring(
+                                    0,
+                                    10
+                                );
+                            
+                            Date serviceDate =
+                                Date.valueOf(dateStr);
+                            
+                            updateRecord.Service_Date_Time__c =
+                                Datetime.newInstance(
+                                    serviceDate.year(),
+                                    serviceDate.month(),
+                                    serviceDate.day()
+                                );
+                        }
+                        
+                    }
+                    catch(Exception dateEx) {
+                        
+                        System.debug(
+                            LoggingLevel.WARN,
+                            'Invalid date in title: '
+                            + generatedTitle
+                        );
+                    }
+                    
                     updates.add(updateRecord);
+                    
                     totalSuccess++;
                     
                     logger.logSuccess(
-                        cv.Id, cv.ContentDocumentId,
+                        cv.Id,
+                        cv.ContentDocumentId,
                         calloutResult.statusCode,
-                        calloutResult.fileName,
+                        generatedTitle,
                         calloutResult.requestPayload,
                         calloutResult.responseBody,
                         elapsed
                     );
-                } else {
+                    
+                }
+                else {
+                    
                     totalFailed++;
+                    
                     logger.logApiError(
-                        cv.Id, cv.ContentDocumentId,
+                        cv.Id,
+                        cv.ContentDocumentId,
                         calloutResult.status,
                         calloutResult.statusCode,
                         calloutResult.errorMessage,
@@ -220,12 +322,79 @@ implements Schedulable, Database.Batchable<SObject>, Database.AllowsCallouts, Da
                         elapsed
                     );
                 }
-            } catch (Exception ex) {
-                Long elapsed = System.currentTimeMillis() - startTime;
-                totalFailed++;
-                logger.logException(cv.Id, cv.ContentDocumentId, ex, null, elapsed);
+                
             }
-        }
+            catch(Exception ex) {
+                
+                Long elapsed =
+                    System.currentTimeMillis() - startTime;
+                
+                totalFailed++;
+                
+                logger.logException(
+                    cv.Id,
+                    cv.ContentDocumentId,
+                    ex,
+                    null,
+                    elapsed
+                );
+            }
+            
+            
+            // Save updates with partial success
+            if (!updates.isEmpty()) {
+                
+                List<Database.SaveResult> saveResults =
+                    Database.update(
+                        updates,
+                        false
+                    );
+                
+                for (
+                    Integer i = 0;
+                    i < saveResults.size();
+                    i++
+                ) {
+                    
+                    if (!saveResults[i].isSuccess()) {
+                        
+                        String errors = '';
+                        
+                        for (
+                            Database.Error err :
+                            saveResults[i].getErrors()
+                        ) {
+                            
+                            errors +=
+                                err.getStatusCode()
+                                + ': '
+                                + err.getMessage()
+                                + '\n';
+                        }
+                        
+                        ContentVersion failedCv =
+                            updates[i];
+                        
+                        logger.logApiError(
+                            failedCv.Id,
+                            null,
+                            'DML_Error',
+                            null,
+                            'Failed update: '
+                            + errors,
+                            null,
+                            null,
+                            null
+                        );
+                        
+                        totalSuccess--;
+                        totalFailed++;
+                    }
+                }
+            }
+            
+            logger.flush();
+        }    
         
         // Persist updates with partial success — one record failure won't block others
         if (!updates.isEmpty()) {
@@ -264,32 +433,36 @@ implements Schedulable, Database.Batchable<SObject>, Database.AllowsCallouts, Da
             : 'Scheduler / Bulk flow';
         
         System.debug(LoggingLevel.INFO,
-                     'AiFileNamingDailyJob completed [' + mode + '] — '
+                     'AiFileNamingDailyJob completed [' + mode + '] - '
                      + 'Processed: ' + totalProcessed
                      + ', Success: ' + totalSuccess
                      + ', Failed: '  + totalFailed
                      + ', Skipped: ' + totalSkipped
                     );
         
-        if (contentVersionId != null) {
-            // Single record — flip Ready_for_Ai_Summery__c → trigger fires next step
-            List<Document_Processing_Log__c> logs = [
-                SELECT Id
-                FROM Document_Processing_Log__c
-                WHERE Content_Version_Id__c = :contentVersionId
-                LIMIT 1
-            ];
-            if (!logs.isEmpty()) {
-                logs[0].Ready_for_Ai_Summery__c = true;
-                update logs[0];
-            }
-        } else {
-            // Bulk / scheduler flow — chain directly as before
-            Database.executeBatch(
-                new GeminiFileInsightBackfillBatch(false, false, null),
-                1
-            );
+        if (isBatchAlreadyRunning('GeminiFileInsightBackfillBatch')) {
+            System.debug(LoggingLevel.INFO,
+                         'GeminiFileInsightBackfillBatch is already queued or running. Skipping chain.'
+                        );
+            return; 
         }
+        
+        Database.executeBatch(
+            new GeminiFileInsightBackfillBatch(false, false, null),
+            1
+        );
+    }
+    
+    private static Boolean isBatchAlreadyRunning(String batchClassName) {
+        List<AsyncApexJob> jobs = [
+            SELECT Id
+            FROM AsyncApexJob
+            WHERE ApexClass.Name = :batchClassName
+            AND Status IN ('Queued', 'Preparing', 'Processing', 'Holding')
+            LIMIT 1
+        ];
+        
+        return !jobs.isEmpty();
     }
     
     // ──────────────────────────────────────────────

@@ -1,4 +1,6 @@
 public with sharing class GeminiAnalysisNoteService {
+    private static Integer STORED_ANALYSIS_EXACT_LIMIT = 10;
+    private static Integer STORED_ANALYSIS_LEGACY_LIMIT = 10;
 
     /**
      * Uses Attachment object instead of ContentVersion/ContentNote to avoid
@@ -25,21 +27,59 @@ public with sharing class GeminiAnalysisNoteService {
         String notePattern = buildNoteTitlePattern(sourceContentDocumentId);
         String legacyNotePattern = buildLegacyNoteTitlePattern(sourceContentDocumentId);
 
-        List<Attachment> attachments = [
-            SELECT Id, Body, Name
+        List<Attachment> exactCandidates = [
+            SELECT Id, Name
             FROM Attachment
             WHERE ParentId IN :parentIds
-              AND (Name LIKE :notePattern OR Name LIKE :legacyNotePattern)
-            ORDER BY LastModifiedDate DESC
+              AND Name LIKE :notePattern
+            ORDER BY LastModifiedDate DESC, CreatedDate DESC, Id DESC
+            LIMIT :STORED_ANALYSIS_EXACT_LIMIT
         ];
 
-        if (attachments.isEmpty()) {
+        GeminiFileInsightsController.AnalysisBundleWrapper exactBundle =
+            findFirstMatchingStoredAnalysis(exactCandidates, sourceContentDocumentId);
+        if (exactBundle != null) {
+            return exactBundle;
+        }
+
+        List<Attachment> legacyCandidates = [
+            SELECT Id, Name
+            FROM Attachment
+            WHERE ParentId IN :parentIds
+              AND Name LIKE :legacyNotePattern
+            ORDER BY LastModifiedDate DESC, CreatedDate DESC, Id DESC
+            LIMIT :STORED_ANALYSIS_LEGACY_LIMIT
+        ];
+
+        return findFirstMatchingStoredAnalysis(legacyCandidates, sourceContentDocumentId);
+    }
+
+    private static GeminiFileInsightsController.AnalysisBundleWrapper findFirstMatchingStoredAnalysis(
+        List<Attachment> candidates,
+        Id sourceContentDocumentId
+    ) {
+        if (candidates == null || candidates.isEmpty()) {
             return null;
         }
 
-        for (Attachment attachmentRow : attachments) {
+        Set<Id> hydratedAttachmentIds = new Set<Id>();
+        for (Attachment candidate : candidates) {
+            if (candidate == null || candidate.Id == null || hydratedAttachmentIds.contains(candidate.Id)) {
+                continue;
+            }
+            hydratedAttachmentIds.add(candidate.Id);
             try {
-                String jsonString = attachmentRow.Body.toString();
+                List<Attachment> hydratedRows = [
+                    SELECT Id, Body, Name
+                    FROM Attachment
+                    WHERE Id = :candidate.Id
+                    LIMIT 1
+                ];
+                if (hydratedRows.isEmpty()) {
+                    continue;
+                }
+
+                String jsonString = hydratedRows[0].Body.toString();
                 GeminiFileInsightsController.AnalysisBundleWrapper bundle =
                     (GeminiFileInsightsController.AnalysisBundleWrapper)
                         JSON.deserialize(jsonString, GeminiFileInsightsController.AnalysisBundleWrapper.class);

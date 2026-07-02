@@ -499,7 +499,7 @@ public class MedicalSalesforceRecord {
         try {
             List<CareObservation> records = [
                 SELECT Id, Name, ObservedSubjectId, Category, ObservationStatus,
-                Range_High__c, Value_Quantity__c,ValueInterpretation,EffectiveDateTime
+                Range_High__c,Range_Low__c, Value_Quantity__c,ValueInterpretation,EffectiveDateTime,Effective_Date_and_Time_Display__c
                 FROM CareObservation
                 WHERE ObservedSubjectId = :accountId
                 AND Id IN :recordIds
@@ -514,9 +514,10 @@ public class MedicalSalesforceRecord {
                 data.put('Category',          record.Category);
                 data.put('ObservationStatus', record.ObservationStatus);
                 data.put('Range_High',        record.Range_High__c);
-                data.put('Value_Quantity',    record.Value_Quantity__c);
+                data.put('Range_Low',         record.Range_Low__c);
+                data.put('Value_Quantity', String.isBlank(String.valueOf(record.Value_Quantity__c)) ? record.Observed_Value__c : record.Value_Quantity__c);
                 data.put('Value_Interpretation',  record.ValueInterpretation);
-                data.put('Effective_Date',  record.EffectiveDateTime);
+                data.put('Effective_Date',  record.Effective_Date_and_Time_Display__c);
                 labs.add(data);
             }
             

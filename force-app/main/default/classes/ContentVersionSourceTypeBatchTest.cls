@@ -30,7 +30,7 @@ private class ContentVersionSourceTypeBatchTest {
             Title                  = 'Test Document',
             PathOnClient           = 'TestDocument.pdf',
             VersionData            = Blob.valueOf('Test Content'),
-            Source__c              = source,
+           // Source__c              = source,
             Source_Type__c         = sourceType,
             FirstPublishLocationId = firstPublishLocationId
         );
@@ -159,7 +159,7 @@ private class ContentVersionSourceTypeBatchTest {
                 Title                  = 'Bulk Doc ' + i,
                 PathOnClient           = 'BulkDoc' + i + '.pdf',
                 VersionData            = Blob.valueOf('Bulk Content ' + i),
-                Source__c              = 'Metriport',
+               // Source__c              = 'Metriport',
                 Source_Type__c         = null,
                 FirstPublishLocationId = personAcc.Id
             ));

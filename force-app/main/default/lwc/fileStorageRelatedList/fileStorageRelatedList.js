@@ -1,6 +1,7 @@
+// fileStorageRelatedList.js
+
 import { LightningElement, api, wire, track } from 'lwc';
 import { NavigationMixin } from 'lightning/navigation';
-import { refreshApex } from '@salesforce/apex';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 
 import getFileStorageRecords from '@salesforce/apex/FileStorageController.getFileStorageRecords';
@@ -25,7 +26,6 @@ const COLUMNS = [
         sortable: true,
         wrapText: false
     },
-    
     {
         label: 'Send to Portal',
         fieldName: 'sendToPortal',
@@ -40,9 +40,31 @@ const COLUMNS = [
         type: 'text',
         sortable: true,
         initialWidth: 140,
-        cellAttributes: {
-            title: { fieldName: 'sourceType' }
-        }
+        cellAttributes: { title: { fieldName: 'sourceType' } }
+    },
+    {
+        label: 'Description',
+        fieldName: 'description',
+        type: 'text',
+        sortable: true,
+        wrapText: true,
+        cellAttributes: { title: { fieldName: 'description' } }
+    },
+    {
+        label: 'Provider',
+        fieldName: 'provider',
+        type: 'text',
+        sortable: true,
+        initialWidth: 180,
+        cellAttributes: { title: { fieldName: 'provider' } }
+    },
+    {
+        label: 'Date of Service',
+        fieldName: 'dateOfService',
+        type: 'text',
+        sortable: true,
+        initialWidth: 140,
+        cellAttributes: { title: { fieldName: 'dateOfService' } }
     },
     {
         label: 'View File',
@@ -66,12 +88,19 @@ export default class FileStorageRelatedList extends NavigationMixin(LightningEle
     @track allRecords = [];
     @track selectedRowIds = [];
 
+    sortBy;
+    sortDirection;
+
     columns = COLUMNS;
 
     isLoading = true;
     showDeleteModal = false;
-    wiredResult;
     _pendingDeleteIds = [];
+
+    // ─── Lifecycle ────────────────────────────────
+    connectedCallback() {
+        this.loadRecords();
+    }
 
     // ─── Getters ─────────────────────────────────
     get hasRecords() {
@@ -98,24 +127,37 @@ export default class FileStorageRelatedList extends NavigationMixin(LightningEle
         return this._pendingDeleteIds.length;
     }
 
-    // ─── Wire ─────────────────────────────────────
-    @wire(getFileStorageRecords, { recordId: '$recordId' })
-    wiredRecords(result) {
-        this.wiredResult = result;
-        const { data, error } = result;
+    // ─── Data Load (imperative) ───────────────────
+    loadRecords() {
+        this.isLoading = true;
 
-        if (data) {
-            this.allRecords = data.map(rec => ({
-                ...rec,
-                recordUrl: `/lightning/r/fra__File_Storage__c/${rec.id}/view`,
-                iconName: this.getFileIcon(rec.fileType)
-            }));
-            this.isLoading = false;
-        } else if (error) {
-            this.showToast('Error', this.reduceErrors(error), 'error');
-            this.allRecords = [];
-            this.isLoading = false;
-        }
+        getFileStorageRecords({ recordId: this.recordId })
+            .then(data => {
+                this.allRecords = data
+                    .map(rec => ({
+                        ...rec,
+                        name: rec.fileName || rec.name,
+                        recordUrl: `/lightning/r/fra__File_Storage__c/${rec.id}/view`,
+                        iconName: this.getFileIcon(rec.fileType)
+                    }))
+                    .sort((a, b) => {
+                        const ta = Date.parse(a.dateOfService);
+                        const tb = Date.parse(b.dateOfService);
+                        const aInvalid = Number.isNaN(ta);
+                        const bInvalid = Number.isNaN(tb);
+                        if (aInvalid && bInvalid) return 0;
+                        if (aInvalid) return -1;
+                        if (bInvalid) return 1;
+                        return tb - ta;
+                    });
+            })
+            .catch(error => {
+                this.showToast('Error', this.reduceErrors(error), 'error');
+                this.allRecords = [];
+            })
+            .finally(() => {
+                this.isLoading = false;
+            });
     }
 
     // ─── Row Actions ──────────────────────────────
@@ -125,14 +167,39 @@ export default class FileStorageRelatedList extends NavigationMixin(LightningEle
 
         if (actionName === 'view_file') {
             const url = row.fileUrl;
-
             if (!url) {
                 this.showToast('No File URL', 'This record does not have a File URL.', 'warning');
                 return;
             }
-
             window.open(url, '_blank', 'noopener,noreferrer');
         }
+    }
+
+    // ─── Sort ─────────────────────────────────────
+    handleSort(event) {
+        const { fieldName, sortDirection } = event.detail;
+        // Name column binds to recordUrl for the link, but should sort by name.
+        const sortField = fieldName === 'recordUrl' ? 'name' : fieldName;
+        const isAscending = sortDirection === 'asc';
+
+        const sorted = [...this.allRecords].sort((a, b) => {
+            const rawA = a[sortField];
+            const rawB = b[sortField];
+
+            if (typeof rawA === 'boolean' || typeof rawB === 'boolean') {
+                const numA = rawA ? 1 : 0;
+                const numB = rawB ? 1 : 0;
+                return isAscending ? numA - numB : numB - numA;
+            }
+
+            const valueA = rawA == null ? '' : rawA.toString().toLowerCase();
+            const valueB = rawB == null ? '' : rawB.toString().toLowerCase();
+            return isAscending ? valueA.localeCompare(valueB) : valueB.localeCompare(valueA);
+        });
+
+        this.allRecords = sorted;
+        this.sortBy = fieldName;
+        this.sortDirection = sortDirection;
     }
 
     // ─── Row Selection ────────────────────────────
@@ -147,7 +214,6 @@ export default class FileStorageRelatedList extends NavigationMixin(LightningEle
             this.showToast('Warning', 'Please select at least one record to delete.', 'warning');
             return;
         }
-
         this._pendingDeleteIds = [...this.selectedRowIds];
         this.showDeleteModal = true;
     }
@@ -165,14 +231,10 @@ export default class FileStorageRelatedList extends NavigationMixin(LightningEle
 
         deleteFileStorageRecords({ recordIds: idsToDelete })
             .then(() => {
-                this.showToast(
-                    'Success',
-                    `${idsToDelete.length} record(s) deleted successfully.`,
-                    'success'
-                );
+                this.showToast('Success', `${idsToDelete.length} record(s) deleted successfully.`, 'success');
                 this.selectedRowIds = [];
                 this._pendingDeleteIds = [];
-                return this.refreshData();
+                this.loadRecords();
             })
             .catch(error => {
                 this.showToast('Error', this.reduceErrors(error), 'error');
@@ -190,28 +252,18 @@ export default class FileStorageRelatedList extends NavigationMixin(LightningEle
     }
 
     // ─── Refresh ──────────────────────────────────
-    refreshData() {
-        this.isLoading = true;
-
-        return refreshApex(this.wiredResult)
-            .finally(() => {
-                this.isLoading = false;
-            });
-    }
-
     handleRefresh() {
-        this.refreshData();
+        this.loadRecords();
     }
 
-    // ─── Upload Success (from c-account-file-uploader) ───
+    // ─── Upload Success ───────────────────────────
     handleUploadSuccess() {
-        this.refreshData();
+        this.loadRecords();  // simple imperative reload — no cache issues
     }
 
     // ─── Utilities ────────────────────────────────
     getFileIcon(fileType) {
         if (!fileType) return 'doctype:unknown';
-
         const type = fileType.toLowerCase();
         if (type.includes('pdf')) return 'doctype:pdf';
         if (type.includes('image') || type.includes('png') || type.includes('jpg') || type.includes('jpeg') || type.includes('gif')) return 'doctype:image';
@@ -232,12 +284,10 @@ export default class FileStorageRelatedList extends NavigationMixin(LightningEle
     reduceErrors(error) {
         if (!error) return 'Unknown error';
         if (typeof error === 'string') return error;
-
         if (error.body) {
             if (typeof error.body.message === 'string') return error.body.message;
             if (typeof error.body === 'string') return error.body;
         }
-
         return error.message || JSON.stringify(error);
     }
 }

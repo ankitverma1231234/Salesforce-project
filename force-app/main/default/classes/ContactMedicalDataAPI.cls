@@ -176,15 +176,16 @@ public static List<ContactMedicalDataWrappers.DocumentData> getRelatedDocuments(
         SELECT Id,
                fra__File_Id__c,
                Fra_AI_Source_File_Id__c,
-               Name,
+               fra__File_Name__c,
                Send_to_Portal__c,
                fra__File_Public_Url__c,
                fra__File_Size__c,
                fra__File_Type__c,
                Source_Type__c,
+               Description__c,
+               Organization_Name__c,
                fra__Internal_File_Id__c,
                Date_of_Service_Display__c,
-               Document_Type__c,
                Category__c,
                fra__Entity_Storage__c,
                Related_Summary_File__c
@@ -198,16 +199,17 @@ public static List<ContactMedicalDataWrappers.DocumentData> getRelatedDocuments(
             
         doc.Id          = fs.fra__Internal_File_Id__c;
         doc.recordId    = String.valueOf(fs.Id);
-        doc.Title       = fs.Name != null                       ? fs.Name                              : '';
+        doc.Title       = fs.fra__File_Name__c != null                       ? fs.fra__File_Name__c    : '';
         doc.PublicUrl   = fs.fra__File_Public_Url__c != null    ? fs.fra__File_Public_Url__c           : '';
         doc.ContentSize = fs.fra__File_Size__c != null          ? String.valueOf(fs.fra__File_Size__c): null;
         doc.FileType    = fs.fra__File_Type__c != null          ? fs.fra__File_Type__c                 : '';
         doc.source_type = fs.Source_Type__c != null             ? fs.Source_Type__c                    : '';
         doc.CreatedDate = fs.Date_of_Service_Display__c != null ? String.valueOf(fs.Date_of_Service_Display__c) : '';
-        doc.document_type = fs.Document_Type__c != null         ? fs.Document_Type__c                  : '';
         doc.category    = fs.Category__c != null                ? fs.Category__c                       : '';
         doc.accountId   = String.valueOf(accountId);
         doc.relatedFile = fs.Fra_AI_Source_File_Id__c != null   ? fs.Fra_AI_Source_File_Id__c          : '';
+        doc.Description = fs.Description__c != null   ? fs.Description__c          : '';
+        doc.Organization_Name = fs.Organization_Name__c != null   ? fs.Organization_Name__c          : '';
         resultList.add(doc);
     }
 

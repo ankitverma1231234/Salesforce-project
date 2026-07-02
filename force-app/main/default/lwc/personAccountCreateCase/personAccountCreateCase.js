@@ -14,11 +14,12 @@ export default class PersonAccountCreateCase extends LightningElement {
     @api recordId;
 
     name; email; dob; biologicalSex; city; state; country; zipCode; street; phone; maidanname; notes;
+    aiSummary;
     
     biologicalSexOptions = [
-        { label: 'Male (M)', value: 'Male (M)' },
-        { label: 'Female (F)', value: 'Female (F)' }
-    ];
+    { label: 'Male (M)', value: 'Male' },
+    { label: 'Female (F)', value: 'Female' }
+];
 
     allergies = [];
     medications = [];
@@ -73,12 +74,12 @@ export default class PersonAccountCreateCase extends LightningElement {
         fieldName: 'Note__c',
         type: 'text'
     },
-    { 
-        type: 'action', 
-        typeAttributes: { 
-            rowActions: [{ label: 'Edit', name: 'edit' }] 
-        } 
-    }
+   // { 
+        //type: 'action', 
+        //typeAttributes: { 
+            //rowActions: [{ label: 'Edit', name: 'edit' }] 
+       // } 
+   // }
 ];
 
     medicationColumns = [
@@ -87,25 +88,25 @@ export default class PersonAccountCreateCase extends LightningElement {
         { label: 'Dose', fieldName: 'Dose__c' },
         { label: 'Frequency', fieldName: 'Frequency__c' },
         { label: 'Reason', fieldName: 'Reason__c' },
-        {label:'Status',fieldName:'Status'},
-        { type: 'action', typeAttributes: { rowActions: [{ label: 'Edit', name: 'edit' }] } }
+        {label:'Status',fieldName:'Status'}
+        //{ type: 'action', typeAttributes: { rowActions: [{ label: 'Edit', name: 'edit' }] } }
     ];  
 
     healthConditionColumns = [
        // { label: 'Name', fieldName: 'Name' },
         { label: 'Medical Condition', fieldName: 'ProblemName' },
         { label: 'Notes', fieldName: 'ProblemDescription' },
-         { label: 'Status', fieldName: 'ConditionStatus' },
-        { type: 'action', typeAttributes: { rowActions: [{ label: 'Edit', name: 'edit' }] } }
+         { label: 'Status', fieldName: 'ConditionStatus' }
+        //{ type: 'action', typeAttributes: { rowActions: [{ label: 'Edit', name: 'edit' }] } }
     ];
 
     healthCareProcedureColumns = [
         { label: 'Name', fieldName: 'Name' },
         {label:'Date ',fieldName:'EffectiveDate'},
-        {label:'Notes',fieldName:'Note__c'},
+        {label:'Notes',fieldName:'Note__c'}
        // { label: 'Surgery Name', fieldName: 'Surgery_Name__c' },
         //{ label: 'Category', fieldName: 'Category' },
-        { type: 'action', typeAttributes: { rowActions: [{ label: 'Edit', name: 'edit' }] } }
+       // { type: 'action', typeAttributes: { rowActions: [{ label: 'Edit', name: 'edit' }] } }
     ];
 
     get hasAllergies() { return this.allergies.length > 0; }
@@ -130,6 +131,7 @@ export default class PersonAccountCreateCase extends LightningElement {
             this.street = data.PersonMailingStreet;
             this.phone = data.PersonHomePhone || data.PersonMobilePhone || '';
             this.maidanname = data.Maiden_Name__pc;
+            this.aiSummary = data.Patient_Summary__c;
             
             console.log('biological data: ' + this.biologicalSex);
             
@@ -216,6 +218,7 @@ export default class PersonAccountCreateCase extends LightningElement {
             phone: this.phone,
             maidanname: this.maidanname,
             notes: this.notes,
+            aiSummary: this.aiSummary,
             allergyIdsJson: JSON.stringify(this.selectedAllergyIds),
             medicationIdsJson: JSON.stringify(this.selectedMedicationIds),
             healthConditionIdsJson: JSON.stringify(this.selectedHealthConditionIds),

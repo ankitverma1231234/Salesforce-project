@@ -162,6 +162,7 @@ public class caseCreationControllerTest {
             'Maiden',
             'Male',
             'Test Notes',
+            'AI Summary Here', 
             JSON.serialize(allergyIds),
             JSON.serialize(medicationIds),
             JSON.serialize(conditionIds),

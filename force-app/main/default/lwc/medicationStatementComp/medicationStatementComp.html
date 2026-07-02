@@ -1,0 +1,138 @@
+<template>
+
+<lightning-card>
+
+
+<div class="section">
+    <h3>Information</h3>
+</div>
+
+
+<div class="slds-p-around_medium">
+
+
+<div class="slds-grid slds-wrap">
+
+
+<!-- LEFT COLUMN -->
+
+<div class="slds-col slds-size_1-of-2">
+
+
+<lightning-input
+label="Medication"
+required
+value={medicationName}
+onchange={handleMedication}>
+</lightning-input>
+
+
+
+<lightning-input
+label="Reason"
+value={reason}
+data-name="reason"
+onchange={handleChange}>
+</lightning-input>
+
+
+
+<lightning-input
+type="datetime"
+label="Start Date"
+value={startDateTime}
+onchange={handleDateTime}>
+</lightning-input>
+
+
+</div>
+
+
+
+
+<!-- RIGHT COLUMN -->
+
+<div class="slds-col slds-size_1-of-2">
+
+
+<lightning-input
+label="Dose"
+value={dose}
+data-name="dose"
+onchange={handleChange}>
+</lightning-input>
+
+
+
+<lightning-input
+label="Frequency"
+value={frequency}
+data-name="frequency"
+onchange={handleChange}>
+</lightning-input>
+
+
+
+
+<lightning-combobox
+label="Status"
+required
+value={status}
+options={statusOptions}
+onchange={handleStatus}>
+</lightning-combobox>
+
+
+</div>
+
+
+</div>
+
+
+
+<!-- COMMENTS -->
+
+
+<div class="section slds-m-top_medium">
+
+<h3>Internal Comments (not shared on Patient Portal)</h3>
+
+</div>
+
+
+
+<lightning-textarea
+label="Internal Comments"
+value={comments}
+onchange={handleComments}>
+</lightning-textarea>
+
+
+
+</div>
+
+
+
+<footer>
+
+
+<lightning-button
+label="Cancel"
+onclick={cancel}>
+</lightning-button>
+
+
+<lightning-button
+class="slds-m-left_small"
+variant="brand"
+label="Save"
+onclick={save}>
+</lightning-button>
+
+
+</footer>
+
+
+</lightning-card>
+
+</template>

@@ -27,7 +27,7 @@ public class ContentDocumentPrepareQueueableTest {
             Title = 'Queueable Test File',
             PathOnClient = 'QueueableTest.txt',
             VersionData = Blob.valueOf('Queueable test content'),
-            Source__c ='Metriport',
+            Source_Type__c ='Metriport',
             FirstPublishLocationId = acc.Id
         );
         insert cv;

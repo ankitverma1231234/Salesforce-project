@@ -22,6 +22,24 @@ private class AccountFileUploaderControllerTest {
         }
     }
 
+    // ── Helper: builds a minimal uploadMetadataJson string ───────────────────
+    private static String buildMetadataJson(
+        String title,
+        String sourceType,
+        String category,
+        String description,
+        String serviceDateTime
+    ) {
+        AccountFileUploaderController.UploadMetadata meta =
+            new AccountFileUploaderController.UploadMetadata();
+        meta.title           = title;
+        meta.sourceType      = sourceType;
+        meta.category        = category;
+        meta.description     = description;
+        meta.serviceDateTime = serviceDateTime;
+        return JSON.serialize(meta);
+    }
+
     @IsTest
     static void confirmUploadLinksFilesCreatesLogsAndQueuesSync() {
         Account testAccount = getExistingAccount();
@@ -32,9 +50,9 @@ private class AccountFileUploaderControllerTest {
             'linked'
         );
         ContentVersion unlinkedVersion = new ContentVersion(
-            Title = 'Needs Link',
+            Title        = 'Needs Link',
             PathOnClient = 'NeedsLink.pdf',
-            VersionData = Blob.valueOf('unlinked')
+            VersionData  = Blob.valueOf('unlinked')
         );
         insert unlinkedVersion;
         unlinkedVersion = [
@@ -43,16 +61,27 @@ private class AccountFileUploaderControllerTest {
             WHERE Id = :unlinkedVersion.Id
         ];
 
-        AccountFileExternalSyncService.batchExecutor = new MockBatchExecutor();
+        configureAsyncDependencies();
 
+        String metaJson = buildMetadataJson(
+            'Test File',
+            'Metriport',
+            'Healthcare Documents',
+            'Test description',
+            null
+        );
+
+        Test.startTest();
         AccountFileUploaderController.UploadResult result =
             AccountFileUploaderController.confirmUpload(
                 testAccount.Id,
                 new List<Id>{
                     linkedVersion.ContentDocumentId,
                     unlinkedVersion.ContentDocumentId
-                }
+                },
+                metaJson
             );
+        Test.stopTest();
 
         System.assertEquals(testAccount.Id, result.accountId);
         System.assertNotEquals(null, result.accountName);
@@ -67,8 +96,8 @@ private class AccountFileUploaderControllerTest {
             [
                 SELECT COUNT()
                 FROM ContentDocumentLink
-                WHERE LinkedEntityId = :testAccount.Id
-                AND ContentDocumentId = :unlinkedVersion.ContentDocumentId
+                WHERE LinkedEntityId      = :testAccount.Id
+                  AND ContentDocumentId   = :unlinkedVersion.ContentDocumentId
             ]
         );
         System.assertEquals(
@@ -94,18 +123,24 @@ private class AccountFileUploaderControllerTest {
             'content'
         );
         FileStorageApexTestFactory.createProcessingLog(version.Id, true);
-        AccountFileExternalSyncService.batchExecutor = new MockBatchExecutor();
+        configureAsyncDependencies();
 
+        String metaJson = buildMetadataJson(null, null, null, null, null);
+
+        Test.startTest();
         AccountFileUploaderController.UploadResult first =
             AccountFileUploaderController.confirmUpload(
                 testAccount.Id,
-                new List<Id>{ version.ContentDocumentId }
+                new List<Id>{ version.ContentDocumentId },
+                metaJson
             );
         AccountFileUploaderController.UploadResult second =
             AccountFileUploaderController.confirmUpload(
                 testAccount.Id,
-                new List<Id>{ version.ContentDocumentId }
+                new List<Id>{ version.ContentDocumentId },
+                metaJson
             );
+        Test.stopTest();
 
         System.assertEquals(0, first.logsCreated);
         System.assertEquals(1, first.logsSkipped);
@@ -124,13 +159,69 @@ private class AccountFileUploaderControllerTest {
     @IsTest
     static void confirmUploadValidatesInputsAndMissingAccount() {
         Account testAccount = getExistingAccount();
-        assertUploadFailure(null, new List<Id>{ Id.valueOf('069000000000001AAA') });
-        assertUploadFailure(testAccount.Id, null);
-        assertUploadFailure(testAccount.Id, new List<Id>());
+        String metaJson = buildMetadataJson(null, null, null, null, null);
+
+        // null accountId
+        assertUploadFailure(null, new List<Id>{ Id.valueOf('069000000000001AAA') }, metaJson);
+        // null documentIds
+        assertUploadFailure(testAccount.Id, null, metaJson);
+        // empty documentIds
+        assertUploadFailure(testAccount.Id, new List<Id>(), metaJson);
+        // non-existent accountId
         assertUploadFailure(
             Id.valueOf('001000000000001AAA'),
-            new List<Id>{ Id.valueOf('069000000000001AAA') }
+            new List<Id>{ Id.valueOf('069000000000001AAA') },
+            metaJson
         );
+    }
+
+    @IsTest
+    static void confirmUploadAppliesMetadataToContentVersion() {
+        Account testAccount = getExistingAccount();
+        ContentVersion version = FileStorageApexTestFactory.createFile(
+            testAccount,
+            'Metadata Test',
+            'MetadataTest.pdf',
+            'content'
+        );
+        configureAsyncDependencies();
+
+        String metaJson = buildMetadataJson(
+            'Updated Title',
+            'Metriport',
+            'Healthcare Documents',
+            'Updated description',
+            '2026-06-01T00:00:00.000Z'
+        );
+
+        Test.startTest();
+        AccountFileUploaderController.UploadResult result =
+            AccountFileUploaderController.confirmUpload(
+                testAccount.Id,
+                new List<Id>{ version.ContentDocumentId },
+                metaJson
+            );
+        Test.stopTest();
+
+        System.assertEquals(1, result.uploadedFiles.size());
+        System.assertEquals('Updated Title', result.uploadedFiles[0].title);
+
+        ContentVersion updated = [
+            SELECT Title, Source_Type__c, Category__c, Description
+            FROM ContentVersion
+            WHERE Id = :version.Id
+        ];
+        System.assertEquals('Updated Title',          updated.Title);
+        System.assertEquals('Metriport',              updated.Source_Type__c);
+        System.assertEquals('Healthcare Documents',   updated.Category__c);
+        System.assertEquals('Updated description',    updated.Description);
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private static void configureAsyncDependencies() {
+        AccountFileExternalSyncService.batchExecutor = new MockBatchExecutor();
+        FileStoragePublicUrlBackfillBatch.skipScheduledBatchExecutionForTest = true;
     }
 
     private static Account getExistingAccount() {
@@ -142,9 +233,13 @@ private class AccountFileUploaderControllerTest {
         ];
     }
 
-    private static void assertUploadFailure(Id accountId, List<Id> documentIds) {
+    private static void assertUploadFailure(
+        Id accountId,
+        List<Id> documentIds,
+        String metaJson
+    ) {
         try {
-            AccountFileUploaderController.confirmUpload(accountId, documentIds);
+            AccountFileUploaderController.confirmUpload(accountId, documentIds, metaJson);
             System.assert(false, 'Expected confirmUpload to reject invalid input.');
         } catch (AuraHandledException expected) {
             System.assertNotEquals(null, expected);

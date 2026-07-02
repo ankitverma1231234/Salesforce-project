@@ -20,7 +20,9 @@ const ICON_MAP = {
     VoiceCall: null,
     MessageHistory: null,
     CallHistory: null,
-    AiCallHistory: 'standard:call'
+    AiCallHistory: 'standard:call',
+    SentFax: 'doctype:overlay',
+ReceivedFax: 'doctype:overlay'
 };
 
 export default class ActivityTimeline extends NavigationMixin(LightningElement) {
@@ -29,7 +31,8 @@ export default class ActivityTimeline extends NavigationMixin(LightningElement) 
     @track activities = [];
     @track filters = {
         Task: true, Event: true, Email: true, MetriportCases: true, PortalMessages: true, Call: true,
-        MessagingSession: true, VoiceCall: true, MessageHistory: false, CallHistory: true, AiCallHistory: true
+        MessagingSession: true, VoiceCall: true, MessageHistory: false, CallHistory: true, AiCallHistory: true,
+        Fax: true
     };
 
     smsIcon = smsIcon;
@@ -105,11 +108,6 @@ export default class ActivityTimeline extends NavigationMixin(LightningElement) 
                     this.normalizeId(eventRecordId) === this.normalizeId(this.recordId)) {
                     
                     console.log('Event matches current record! Refreshing timeline...');
-                    
-                    // Show toast notification
-                    //this.showToast('New activity detected', 'Refreshing timeline...', 'success');
-                    
-                    // Refresh the timeline
                     this.refreshTimeline();
                 } else {
                     console.log('Event does not match current record, ignoring...');
@@ -196,18 +194,19 @@ export default class ActivityTimeline extends NavigationMixin(LightningElement) 
             this.offset += rows.length;
 
             const mapped = rows.map(row => ({
-                ...row,
-                iconName: ICON_MAP[row.type] || null,
-                iconUrl:
-                    //row.type === 'MessagingSession' ? this.smsIcon :
-                    row.type === 'VoiceCall' ? this.VoiceCallIcon :
-                    row.type === 'MessageHistory' ? this.smsIcon :
-                    row.type === 'CallHistory' ? this.VoiceCallIcon :
-                    null,
-                formattedDate: row.createdDate
-                    ? new Date(row.createdDate).toLocaleString()
-                    : ''
-            }));
+    ...row,
+    iconName: ICON_MAP[row.type] || 'utility:activity',
+    //iconSize: (row.type === 'SentFax' || row.type === 'ReceivedFax') ? 'x-small' : 'small',  // ✅
+    iconUrl:
+        row.type === 'VoiceCall'      ? this.VoiceCallIcon :
+        row.type === 'MessageHistory' ? this.smsIcon :
+        row.type === 'CallHistory'    ? this.VoiceCallIcon :
+        null,
+    isFax: row.type === 'SentFax' || row.type === 'ReceivedFax',
+    formattedDate: row.createdDate
+        ? new Date(row.createdDate).toLocaleString()
+        : ''
+}));
 
             this.activities = [...this.activities, ...mapped];
         } catch (error) {
@@ -258,7 +257,13 @@ export default class ActivityTimeline extends NavigationMixin(LightningElement) 
     }
 
     get filteredActivities() {
-        return this.activities.filter(act => this.filters[act.type]);
+        return this.activities.filter(act => {
+            // SentFax and ReceivedFax are both controlled by the single 'Fax' toggle
+            if (act.type === 'SentFax' || act.type === 'ReceivedFax') {
+                return this.filters.Fax;
+            }
+            return this.filters[act.type];
+        });
     }
 
     handleFilterChange(event) {
@@ -278,6 +283,8 @@ export default class ActivityTimeline extends NavigationMixin(LightningElement) 
         else if (type === 'VoiceCall') objectApiName = 'VoiceCall';
         else if (type === 'MessageHistory') objectApiName = 'sra__Message_History__c';
         else if (type === 'CallHistory' || type === 'AiCallHistory') objectApiName = 'ccra__Call_History__c';
+        else if (type === 'SentFax') objectApiName = 'efaxapp__Sent_Fax__c';
+        else if (type === 'ReceivedFax') objectApiName = 'efaxapp__Received_Fax__c';
 
         this[NavigationMixin.Navigate]({
             type: 'standard__recordPage',

@@ -234,6 +234,12 @@ public static void parseAndInsertEncounters(String rawJson) {
                 inFlightDedupeKeys.add(dedupeKey);
             }
 
+            // Skip "No Data Available" visit names
+            if (!String.isBlank(v.Visit_Name__c) && v.Visit_Name__c.trim().equalsIgnoreCase('No Data Available')) {
+                System.debug('⏭️ Skipping Visit (No Data Available name): ' + v.VisitId__c);
+                continue;
+            }
+
             toInsert.add(v);
         }
 
@@ -664,6 +670,12 @@ private static Visit parseSingleEncounter(
                         }
                     }
         
+                    // Skip if no address
+                    if (!res.containsKey('address') || ((List<Object>) res.get('address')).isEmpty()) {
+                        System.debug('⏭️ Skipping Organization (no address): ' + orgId);
+                        continue;
+                    }
+
                     // Dedup by composite key: Name
                     String orgDedupeKey = buildOrgDedupeKey(hf.Name);
                     if (!String.isBlank(orgDedupeKey)) {
@@ -1074,6 +1086,11 @@ if (!patientIds.isEmpty()) {
     
                 HealthcarePractitionerFacility hp =
                     parseSinglePractitioner(res);
+                if (hp != null && !String.isBlank(hp.Name) &&
+                    hp.Name.trim().equalsIgnoreCase('No Data Available')) {
+                    System.debug('⏭️ Skipping Practitioner (No Data Available name): ' + practitionerId);
+                    continue;
+                }
                 
                 if (!patientAccountMap.isEmpty()) {
         hp.AccountId =
@@ -1084,6 +1101,24 @@ if (!patientIds.isEmpty()) {
 
     
                 if (hp != null) {
+                    // Skip if no phone AND no address
+                    Boolean hasPhone   = !String.isBlank(hp.Phone__c);
+                    Boolean hasAddress = !String.isBlank(hp.Address__Street__s)
+                                     || !String.isBlank(hp.Address__City__s)
+                                     || !String.isBlank(hp.Address__PostalCode__s);
+                    if (!hasPhone && !hasAddress) {
+                        System.debug('⏭️ Skipping Practitioner (no phone and no address): ' + practitionerId);
+                        continue;
+                    }
+
+                    // Skip if no Speciality AND no Qualification
+                    Boolean hasQualification = !String.isBlank(hp.Qualification__c);
+                    Boolean hasSpeciality    = !String.isBlank(hp.Specialty__c);
+                    if (!hasQualification && !hasSpeciality) {
+                        System.debug('⏭️ Skipping Practitioner (no Speciality and no Qualification): ' + practitionerId);
+                        continue;
+                    }
+
                     // Dedup by composite key: Name + Phone__c
                     String dedupeKey = buildPractitionerDedupeKey(hp.Name, hp.Phone__c);
                     if (!String.isBlank(dedupeKey)) {
@@ -1621,6 +1656,12 @@ if (!incomingObservationIds.isEmpty()) {
             }
             if (!String.isBlank(obsDedupeKey)) inFlightObsDedupeKeys.add(obsDedupeKey);
 
+            // Skip "No Data Available" observation names
+            if (!String.isBlank(obs.Name) && obs.Name.trim().equalsIgnoreCase('No Data Available')) {
+                System.debug('⏭️ Skipping Observation (No Data Available name): ' + observationId);
+                continue;
+            }
+
             toInsert.add(obs);
         }
 
@@ -2028,6 +2069,12 @@ private static String buildObservationDedupeKey(String name, String valueQty, Da
                 inFlightDiagDedupeKeys.add(dedupeKey);
             }
 
+            // Skip "No Data Available" diagnostic report names
+            if (!String.isBlank(ds.Name__c) && ds.Name__c.trim().equalsIgnoreCase('No Data Available')) {
+                System.debug('⏭️ Skipping DiagnosticSummary (No Data Available name): ' + reportId);
+                continue;
+            }
+
             toInsert.add(ds);
         }
 
@@ -2388,13 +2435,17 @@ private static String buildDiagnosticDedupeKey(Id careObservationId, String summ
             }
     
         Map<String, Id> patientAccountMap = new Map<String, Id>();
+        Map<String, String> patientFirstNameMap = new Map<String, String>();
+        Map<String, String> patientLastNameMap  = new Map<String, String>();
         if (!patientIds.isEmpty()) {
             for (Account a : [
-                SELECT Id, Metriport_Patient_Id__c
+                SELECT Id, Metriport_Patient_Id__c, FirstName, LastName
                 FROM Account
                 WHERE Metriport_Patient_Id__c IN :patientIds
             ]) {
                 patientAccountMap.put(a.Metriport_Patient_Id__c, a.Id);
+                patientFirstNameMap.put(a.Metriport_Patient_Id__c, a.FirstName != null ? a.FirstName.trim().toLowerCase() : '');
+                patientLastNameMap.put(a.Metriport_Patient_Id__c,  a.LastName  != null ? a.LastName.trim().toLowerCase()  : '');
             }
         }
 
@@ -2550,6 +2601,25 @@ private static String buildDiagnosticDedupeKey(Id careObservationId, String summ
                 }
             }
 
+            // Skip if the related person has the same name as the patient
+            Map<String, Object> patRef = (Map<String, Object>) res.get('patient');
+            if (patRef != null) {
+                String patFhirRef = (String) patRef.get('reference');
+                if (!String.isBlank(patFhirRef) && patFhirRef.startsWith('Patient/')) {
+                    String patFhirId = patFhirRef.substring(8);
+                    String patFirst  = patientFirstNameMap.containsKey(patFhirId) ? patientFirstNameMap.get(patFhirId) : '';
+                    String patLast   = patientLastNameMap.containsKey(patFhirId)  ? patientLastNameMap.get(patFhirId)  : '';
+                    String cFirst    = String.isBlank(c.FirstName) ? '' : c.FirstName.trim().toLowerCase();
+                    String cLast     = String.isBlank(c.LastName)  ? '' : c.LastName.trim().toLowerCase();
+                    Boolean sameFullName = (cFirst == patFirst && cLast == patLast && !String.isBlank(cLast));
+                    Boolean reverseMatch = (cFirst == patLast  && cLast == patFirst && !String.isBlank(cFirst));
+                    if (sameFullName || reverseMatch) {
+                        System.debug('⏭️ Skipping RelatedPerson (same name as patient): ' + relatedPersonId);
+                        continue;
+                    }
+                }
+            }
+
             // Dedup by composite key: LastName + Phone
             String dedupeKey = buildRelatedPersonDedupeKey(c.FirstName, c.LastName);
             if (!String.isBlank(dedupeKey)) {
@@ -2560,6 +2630,13 @@ private static String buildDiagnosticDedupeKey(Id careObservationId, String summ
                 inFlightRelatedPersonDedupeKeys.add(dedupeKey);
             }
     
+            // Skip "No Data Available" related person names
+            if ((!String.isBlank(c.FirstName) && c.FirstName.trim().equalsIgnoreCase('No Data Available'))
+                || (!String.isBlank(c.LastName) && c.LastName.trim().equalsIgnoreCase('No Data Available'))) {
+                System.debug('⏭️ Skipping RelatedPerson (No Data Available name): ' + relatedPersonId);
+                continue;
+            }
+
             toInsert.add(c);
         }
     
@@ -3061,6 +3138,12 @@ private static String buildServiceRequestDedupeKey(String requestName, Datetime 
                         parseSingleFamilyMemberHistory(res, patientMap);
         
                     if (fmh != null) {
+                        // Skip "No Data Available" family member names
+                        if (!String.isBlank(fmh.Name) && fmh.Name.trim().equalsIgnoreCase('No Data Available')) {
+                            System.debug('⏭️ Skipping FamilyMemberHistory (No Data Available name): ' + historyId);
+                            continue;
+                        }
+
                         // Dedup by composite key: Name
                         String dedupeKey = buildFMHDedupeKey(fmh.Name);
                         if (!String.isBlank(dedupeKey)) {

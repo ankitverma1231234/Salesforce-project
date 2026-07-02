@@ -32,5 +32,9 @@
         <members>*</members>
         <name>StaticResource</name>
     </types>
+    <types>
+        <members>Account_File_Sync_Request__e</members>
+        <name>CustomObject</name>
+    </types>
     <version>66.0</version>
 </Package>

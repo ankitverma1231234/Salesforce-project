@@ -70,6 +70,49 @@ public without sharing class AccountFileExternalSyncService {
         return result;
     }
 
+    public static List<ContentVersion> filterUnsyncedVersions(
+        List<ContentVersion> contentVersions
+    ) {
+        List<ContentVersion> candidates = contentVersions == null
+            ? new List<ContentVersion>()
+            : contentVersions;
+        Set<String> contentVersionIds = new Set<String>();
+
+        for (ContentVersion version : candidates) {
+            if (version != null && version.Id != null) {
+                contentVersionIds.add(String.valueOf(version.Id));
+            }
+        }
+
+        Set<String> syncedContentVersionIds = new Set<String>();
+        if (!contentVersionIds.isEmpty()) {
+            for (fra__File_Storage__c fileStorage : [
+                SELECT fra__Internal_File_Id__c
+                FROM fra__File_Storage__c
+                WHERE fra__Internal_File_Id__c IN :contentVersionIds
+            ]) {
+                if (String.isNotBlank(fileStorage.fra__Internal_File_Id__c)) {
+                    syncedContentVersionIds.add(
+                        fileStorage.fra__Internal_File_Id__c
+                    );
+                }
+            }
+        }
+
+        List<ContentVersion> unsyncedVersions = new List<ContentVersion>();
+        for (ContentVersion version : candidates) {
+            if (version != null && version.Id != null &&
+                !syncedContentVersionIds.contains(String.valueOf(version.Id))) {
+                unsyncedVersions.add(version);
+            }
+        }
+
+        System.debug('Total ContentVersions Found: ' + contentVersionIds.size());
+        System.debug('Already Synced Files: ' + syncedContentVersionIds.size());
+        System.debug('Files Remaining For Upload: ' + unsyncedVersions.size());
+        return unsyncedVersions;
+    }
+
     @TestVisible
     private static String buildContentDocumentQuery(Set<Id> contentDocumentIds) {
         List<String> escapedIds = new List<String>();

@@ -82,6 +82,11 @@ public static void parseAndInsertMedications(String rawJson) {
 
             Medication med = parseSingleMedication(res);
 
+            if ('completed'.equalsIgnoreCase(med.Status)) {
+                System.debug('⏭️ Skipping Medication (status = completed): ' + medId);
+                continue;
+            }
+
             med.Patient__c = patientSfId;
 
  Map<String, Object> amountMap = (Map<String, Object>) res.get('amount');
@@ -259,8 +264,8 @@ public static void parseAndInsertMedicationAdministrations(String rawJson) {
 
                 if (!'MedicationAdministration'.equals((String) res.get('resourceType'))) continue;
 
-                if (!isWithin12Months(res)) {
-                    System.debug('⏭️ Skipping MedicationAdministration (older than 12 months): ' + res.get('id'));
+              if (!isStartDateWithin12Months(res)) {
+                    System.debug('⏭️ Skipping MedicationAdministration (StartDate missing or older than 12 months): ' + res.get('id'));
                     continue;
                 }
 
@@ -510,6 +515,12 @@ public static void parseAndInsertMedicationAdministrations(String rawJson) {
 
             System.debug('✅ Inserted MedicationAdministration records: ' + successCount +
                          ' | Failed: ' + (adminsToInsert.size() - successCount));
+
+            // Consolidate into one Medication_History__c per medicine name
+            Id adminPatientId = adminsToInsert.isEmpty() ? null : adminsToInsert[0].PatientId;
+            if (adminPatientId != null) {
+                MedicationHandler.upsertMedicationHistory(adminPatientId);
+            }
         }
 
     }
@@ -631,6 +642,35 @@ private static MedicationAdministration parseSingleMedicationAdministration(
         return null;
     }
 }
+    
+    private static Boolean isStartDateWithin12Months(Map<String, Object> resource) {
+
+        if (resource == null) {
+            return false;
+        }
+    
+        Object effectiveRaw = resource.get('effectivePeriod');
+    
+        if (!(effectiveRaw instanceof Map<String, Object>)) {
+            return false;
+        }
+    
+        Map<String, Object> effective = (Map<String, Object>) effectiveRaw;
+    
+        if (!effective.containsKey('start')) {
+            return false;
+        }
+    
+        Datetime startDate = parseFhirDateTime(effective.get('start'));
+    
+        if (startDate == null) {
+            return false;
+        }
+    
+        Datetime twelveMonthsAgo = System.now().addMonths(-12);
+    
+        return startDate >= twelveMonthsAgo;
+    }
 
     //------------------Health Condition------------
     
@@ -804,6 +844,12 @@ private static MedicationAdministration parseSingleMedicationAdministration(
                     parseSingleCondition(res, patientToMemberMap);
             
                 if (mh != null) {
+                    // Skip "No Data Available" condition names
+                    if (!String.isBlank(mh.ProblemName) && mh.ProblemName.trim().equalsIgnoreCase('No Data Available')) {
+                        System.debug('⏭️ Skipping Condition (No Data Available name): ' + conditionId);
+                        continue;
+                    }
+
                     // Dedup by composite key: ProblemName + ProblemDescription + OnsetStartDateTime
                     String dedupeKey = buildConditionDedupeKey(mh.ProblemName);
                     if (!String.isBlank(dedupeKey)) {
@@ -1038,11 +1084,33 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
 
                 if (!'MedicationStatement'.equals((String) res.get('resourceType'))) continue;
 
-                if (!isWithin12Months(res)) {
-                    System.debug('⏭️ Skipping MedicationStatement (older than 12 months): ' + res.get('id'));
+                // Only insert active medication statements
+                String msStatus = (String) res.get('status');
+                if (!'active'.equalsIgnoreCase(msStatus)) {
+                    System.debug('⏭️ Skipping MedicationStatement (not active): ' + res.get('id'));
                     continue;
                 }
 
+                // Filter by effectivePeriod.start — required and must be within last 12 months
+                Object effPeriodRaw = res.get('effectivePeriod');
+                if (!(effPeriodRaw instanceof Map<String, Object>)) {
+                    System.debug('⏭️ Skipping MedicationStatement (no effectivePeriod): ' + res.get('id'));
+                    continue;
+                }
+                Object startRaw = ((Map<String, Object>) effPeriodRaw).get('start');
+                if (startRaw == null) {
+                    System.debug('⏭️ Skipping MedicationStatement (no start date): ' + res.get('id'));
+                    continue;
+                }
+                Datetime startDt = parseFhirDateTime(startRaw);
+                if (startDt == null) {
+                    System.debug('⏭️ Skipping MedicationStatement (unparseable start date): ' + res.get('id'));
+                    continue;
+                }
+                if (startDt < Datetime.now().addMonths(-12)) {
+                    System.debug('⏭️ Skipping MedicationStatement (start older than 12 months): ' + res.get('id'));
+                    continue;
+                }
                 medResources.add(res);
 
                 Object subjectRaw = res.get('subject');
@@ -1079,14 +1147,16 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
         }
 
         Map<String, Id> medicationMap = new Map<String, Id>();
+        Map<String, String> medicationNameMap = new Map<String, String>();
         if (!medicationFhirIds.isEmpty()) {
             for (Medication m : [
-                SELECT Id, MedicationId__c
+                SELECT Id, MedicationId__c, Name
                 FROM Medication
                 WHERE MedicationId__c IN :medicationFhirIds
             ]) {
                 if (m.MedicationId__c != null) {
                     medicationMap.put(m.MedicationId__c, m.Id);
+                    medicationNameMap.put(m.MedicationId__c, m.Name);
                 }
             }
         }
@@ -1130,12 +1200,12 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
         Set<String> existingMedStmtDedupeKeys = new Set<String>();
         if (!stmtPatientIds.isEmpty()) {
             for (MedicationStatement ms : [
-                SELECT MedicationId, Frequency__c, Dose__c
+                SELECT Medication.Name
                 FROM MedicationStatement
                 WHERE MedicationId != null
                   AND PatientId IN :stmtPatientIds
             ]) {
-                String key = buildMedStatementDedupeKey(ms.MedicationId, ms.Frequency__c, ms.Dose__c);
+                String key = buildMedStatementDedupeKey(ms.Medication.Name);
                 if (!String.isBlank(key)) existingMedStmtDedupeKeys.add(key);
             }
         }
@@ -1151,8 +1221,18 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
         
             MedicationStatement ms = parseSingleMedicationStatement(res, patientMap, medicationMap);
             if (ms != null) {
-                // Dedup by composite key: MedicationId + Frequency__c + Dose__c
-                String dedupeKey = buildMedStatementDedupeKey(ms.MedicationId, ms.Frequency__c, ms.Dose__c);
+                // Resolve medication name from FHIR reference for name-based dedup
+                String medName = null;
+                Object medRefRaw2 = res.get('medicationReference');
+                if (medRefRaw2 instanceof Map<String, Object>) {
+                    String medRef = (String) ((Map<String, Object>) medRefRaw2).get('reference');
+                    if (!String.isBlank(medRef) && medRef.contains('/')) {
+                        medName = medicationNameMap.get(medRef.split('/')[1]);
+                    }
+                }
+
+                // Dedup by Medication Name (lowercase)
+                String dedupeKey = buildMedStatementDedupeKey(medName);
                 if (!String.isBlank(dedupeKey)) {
                     if (existingMedStmtDedupeKeys.contains(dedupeKey) || inFlightMedStmtDedupeKeys.contains(dedupeKey)) {
                         System.debug('⏭️ Skipping MedicationStatement (Composite Duplicate): ' + dedupeKey);
@@ -1204,6 +1284,12 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
 
             System.debug('✅ Inserted MedicationStatements: ' + successCount +
                          ' | Failed: ' + (medsToInsert.size() - successCount));
+
+            // Consolidate into one Medication_History__c per medicine name
+            Id stmtPatientId = medsToInsert.isEmpty() ? null : medsToInsert[0].PatientId;
+            if (stmtPatientId != null) {
+                MedicationHandler.upsertMedicationHistory(stmtPatientId);
+            }
         }
 
     } catch (Exception e) {
@@ -1214,12 +1300,10 @@ public static void parseAndInsertMedicationStatements(String rawJson) {
 /* -------------------------
    Helper: build MedicationStatement dedupe key
 -------------------------- */
-private static String buildMedStatementDedupeKey(Id medicationId, String frequency, String dose) {
-    String medPart   = (medicationId != null) ? String.valueOf(medicationId) : '';
-    String freqPart  = String.isBlank(frequency) ? '' : frequency.trim().toLowerCase();
-    String dosePart  = String.isBlank(dose)      ? '' : dose.trim().toLowerCase();
-    if (String.isBlank(medPart) && String.isBlank(freqPart) && String.isBlank(dosePart)) return null;
-    return medPart + '|' + freqPart + '|' + dosePart;
+private static String buildMedStatementDedupeKey(String medicationName) {
+    String namePart = String.isBlank(medicationName) ? '' : medicationName.trim().toLowerCase();
+    if (String.isBlank(namePart)) return null;
+    return namePart;
 }
 
         
@@ -1454,6 +1538,12 @@ private static String buildMedStatementDedupeKey(Id medicationId, String frequen
                         parseSingleProcedure(res, patientToMemberMap);
         
                     if (hcp != null) {
+                        // Skip "No Data Available" surgery names
+                        if (!String.isBlank(hcp.Surgery_Name__c) && hcp.Surgery_Name__c.trim().equalsIgnoreCase('No data available for this section')) {
+                            System.debug('⛔ Skipping Procedure (No Data Available name): ' + procId);
+                            continue;
+                        }
+
                         // Dedup by composite key: Surgery_Name__c + Performed_Date_Time__c
                         String dedupeKey = buildProcedureDedupeKey(hcp.Surgery_Name__c);
                         if (!String.isBlank(dedupeKey)) {
@@ -1618,6 +1708,29 @@ private static String buildProcedureDedupeKey(String surgeryName) {
                 System.debug(
                     '⚠️ Could not parse performedDateTime: ' +
                     resource.get('performedDateTime')
+                );
+            }
+        }
+
+        if (hcp.Performed_Date_Time__c == null &&
+            resource.containsKey('effectiveDateTime') &&
+            resource.get('effectiveDateTime') != null) {
+
+            try {
+                String dtStr =
+                    String.valueOf(resource.get('effectiveDateTime'))
+                        .replace('T', ' ')
+                        .replace('Z', '');
+
+                Datetime effectiveDt = Datetime.valueOfGmt(dtStr);
+
+                hcp.Performed_Date_Time__c = effectiveDt;
+                hcp.EffectiveDate = effectiveDt.date();
+
+            } catch (Exception ex) {
+                System.debug(
+                    '⚠️ Could not parse effectiveDateTime: ' +
+                    resource.get('effectiveDateTime')
                 );
             }
         }

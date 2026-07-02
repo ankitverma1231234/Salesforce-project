@@ -13,7 +13,7 @@ public with sharing class caseCreationController {
     public static Account getPersonAccount(Id accountId) {
         system.debug('method started');
         return [
-            SELECT Id, Name, PersonEmail, Date_of_Birth__pc, Biological_Sex_at_Birth__c,Maiden_Name__pc,PersonMobilePhone,PersonHomePhone,PersonMailingCity,PersonMailingState,PersonMailingCountry,PersonMailingPostalCode,PersonMailingStreet
+            SELECT Id, Name, PersonEmail, Date_of_Birth__pc, Biological_Sex_at_Birth__c,Maiden_Name__pc,PersonMobilePhone,PersonHomePhone,PersonMailingCity,PersonMailingState,PersonMailingCountry,PersonMailingPostalCode,PersonMailingStreet,Patient_Summary__c
             FROM Account
             WHERE Id = :accountId
               AND IsPersonAccount = true
@@ -36,6 +36,7 @@ public with sharing class caseCreationController {
         String maidanname,
         String biologicalSex,
         String notes,
+        String aiSummary,
         String allergyIdsJson,
         String medicationIdsJson,
         String healthConditionIdsJson,
@@ -104,6 +105,7 @@ phone = finalPhone;
             biologicalSex,
             maidanname,
             notes,
+            aiSummary,
             c.CreatedDate
         );
 
@@ -142,7 +144,7 @@ public static Id createCaseAutomated(Id accountId) {
         accountId, acc.Name, acc.PersonEmail, dobStr,
         acc.PersonMailingCity, acc.PersonMailingState, acc.PersonMailingCountry,
         acc.PersonMailingPostalCode, acc.PersonMailingStreet, '',
-        acc.Maiden_Name__pc, acc.Biological_Sex_at_Birth__c, '',
+        acc.Maiden_Name__pc, acc.Biological_Sex_at_Birth__c, '', acc.Patient_Summary__c,
         JSON.serialize(allergyIds), JSON.serialize(medicationIds),
         JSON.serialize(healthConditionIds), JSON.serialize(procedureIds)
     );
@@ -177,6 +179,7 @@ public static Id createCaseAutomated(Id accountId) {
         String biologicalSex,
         String maidanname,
         String notes,
+        String aiSummary,
         Datetime caseCreatedDate
     ) {
         // Build JSON manually to preserve order
@@ -196,6 +199,7 @@ public static Id createCaseAutomated(Id accountId) {
         jsonString += '      "phone": "' + escapeJson(phone) + '",\n';
         jsonString += '      "dateOfBirth": "' + (dob != null ? dob : '') + '",\n';
         jsonString += '      "biologicalSexAtBirth": "' + escapeJson(biologicalSex) + '",\n';
+        jsonString += '      "aiSummary": "' + escapeJson(aiSummary) + '",\n';
         jsonString += '      "mailingAddress": {\n';
         jsonString += '        "street": "' + escapeJson(street) + '",\n';
         jsonString += '        "city": "' + escapeJson(city) + '",\n';

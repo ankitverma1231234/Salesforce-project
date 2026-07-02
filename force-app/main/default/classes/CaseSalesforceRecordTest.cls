@@ -73,7 +73,7 @@ public class CaseSalesforceRecordTest {
             Title='File1',
             PathOnClient='file.txt',
             VersionData=Blob.valueOf('data'),
-            Source__c = 'Metriport',
+            Source_Type__c = 'Metriport',
             IsMajorVersion=true
         );
         insert cv;
@@ -149,7 +149,7 @@ public class CaseSalesforceRecordTest {
             Title='ChatFile',
             PathOnClient='chat.txt',
             VersionData=Blob.valueOf('chat'),
-             Source__c = 'Metriport',
+             Source_Type__c = 'Metriport',
             IsMajorVersion=true
         );
         insert cv;

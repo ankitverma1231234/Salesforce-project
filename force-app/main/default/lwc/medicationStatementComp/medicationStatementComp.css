@@ -1,0 +1,17 @@
+.section{
+
+background:#f3f3f3;
+padding:8px;
+font-weight:bold;
+border-radius:5px;
+
+}
+
+
+footer{
+
+display:flex;
+justify-content:flex-end;
+padding:15px;
+
+}

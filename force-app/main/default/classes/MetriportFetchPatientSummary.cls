@@ -110,7 +110,7 @@ public class MetriportFetchPatientSummary {
         cv.PathOnClient = 'Medical_Summary_' + patientId + '.pdf';
         cv.VersionData = pdfBlob;
         cv.FirstPublishLocationId = patientSfId;
-        cv.Source__c = 'Metriport';
+        cv.Source_Type__c = 'Metriport';
         cv.Send_File_to_Portal__c = true;
         insert cv;
     }

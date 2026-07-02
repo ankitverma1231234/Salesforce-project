@@ -29,7 +29,7 @@ public class EfaxTriggerHandler_Test {
             Title = 'Test',
             PathOnClient = 'test.pdf',
             VersionData = Blob.valueOf('test'),
-            Source__c = 'Metriport'
+            Source_Type__c = 'Metriport'
         );
         insert cv;
         

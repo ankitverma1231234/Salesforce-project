@@ -13,15 +13,16 @@ public class CDPortalPrepareQueueable implements Queueable {
             SELECT Id,
             fra__File_Id__c,
             Fra_AI_Source_File_Id__c,
-            Name,
+            fra__File_Name__c,
             Send_to_Portal__c,
             fra__File_Public_Url__c,
             fra__File_Size__c,
             fra__File_Type__c,
             Source_Type__c,
             Date_of_Service_Display__c,
-            Document_Type__c,
             Category__c,
+            Description__c,
+            Organization_Name__c,
             fra__Internal_File_Id__c,
             fra__Entity_Storage__c,
             Related_Summary_File__c
@@ -77,18 +78,19 @@ public class CDPortalPrepareQueueable implements Queueable {
             if (accountId == null) continue;
             
             Map<String, Object> doc = new Map<String, Object>();
-            doc.put('Id',            fs.fra__Internal_File_Id__c              != null ? fs.fra__Internal_File_Id__c                        : '');
+            doc.put('Id',            fs.fra__Internal_File_Id__c              != null ? fs.fra__Internal_File_Id__c      : '');
             doc.put('recordId',      String.valueOf(fs.Id));
-            doc.put('Title',         fs.Name                         != null ? fs.Name                                   : '');
+            doc.put('Title',         fs.fra__File_Name__c                     != null ? fs.fra__File_Name__c         : '');
             doc.put('PublicUrl',     fs.fra__File_Public_Url__c      != null ? fs.fra__File_Public_Url__c                : '');
             doc.put('ContentSize',   fs.fra__File_Size__c            != null ? String.valueOf(fs.fra__File_Size__c)      : '');
             doc.put('FileType',      fs.fra__File_Type__c            != null ? fs.fra__File_Type__c                      : '');
             doc.put('source_type',   fs.Source_Type__c               != null ? fs.Source_Type__c                         : '');
             doc.put('CreatedDate',   fs.Date_of_Service_Display__c   != null ? String.valueOf(fs.Date_of_Service_Display__c) : '');
-            doc.put('document_type', fs.Document_Type__c             != null ? fs.Document_Type__c                       : '');
             doc.put('category',      fs.Category__c                  != null ? fs.Category__c                            : '');
             doc.put('accountId',     String.valueOf(accountId));
             doc.put('relatedFile',   fs.Fra_AI_Source_File_Id__c     != null ? fs.Fra_AI_Source_File_Id__c               : '');
+            doc.put('Description',   fs.Description__c     != null ? fs.Description__c               : '');
+            doc.put('Organization',   fs.Organization_Name__c     != null ? fs.Organization_Name__c  : '');
             
             if (!accountDocumentsMap.containsKey(accountId)) {
                 accountDocumentsMap.put(accountId, new List<Map<String, Object>>());

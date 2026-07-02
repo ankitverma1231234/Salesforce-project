@@ -164,14 +164,14 @@ private class AiFileNamingConventionControllerTest {
             PathOnClient = 'RadiologyImage.pdf',
             VersionData = Blob.valueOf('test body'),
             FirstPublishLocationId = AccId,
-            Source__c = 'Metriport'
+            Source_Type__c = 'Metriport'
         );
         insert cv;
         
         // Re-query to get all fields the batch execute method needs
         ContentVersion fullCv = [
             SELECT Id, ContentDocumentId, Title, FileType, CreatedDate, VersionData,
-            AI_Generated_File_Name__c, AI_Name_Generated__c, Source__c
+            AI_Generated_File_Name__c, AI_Name_Generated__c, Source_Type__c
             FROM ContentVersion
             WHERE Id = :cv.Id
             LIMIT 1

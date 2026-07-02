@@ -119,12 +119,5 @@ public class MetriportDocumentDownloadQueueable
 
         insert cv;
 
-        // Kick off document processing pipeline
-        //for Ai Naming and Ai Summary generation and Gdrive sync
-        Document_Processing_Log__c log = new Document_Processing_Log__c();
-        log.Content_Version_Id__c    = cv.Id;
-        log.Is_Active__c             = true;
-        log.Ready_for_Attachment__c  = true;
-        insert log;
     }
 }

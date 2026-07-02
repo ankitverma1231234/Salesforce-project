@@ -8,6 +8,35 @@
     padding: 0.75rem;
 }
 
+.filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.filter-combobox {
+    min-width: 0;
+}
+
+.filter-combobox_category {
+    width: 22rem;
+    max-width: 100%;
+}
+
+.filter-combobox_doctype {
+    width: 16rem;
+    max-width: 100%;
+}
+
+@media (max-width: 768px) {
+    .filter-combobox_category,
+    .filter-combobox_doctype {
+        width: 100%;
+    }
+}
+
 .toolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -105,8 +134,19 @@
     white-space: nowrap;
 }
 
-.col-category {
-    min-width: 9rem;
+.col-description {
+    min-width: 12rem;
+    max-width: 18rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.col-provider {
+    min-width: 10rem;
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
 }
 

@@ -115,6 +115,12 @@ public without sharing class ImmunizationHandler {
                     inFlightImmDedupeKeys.add(dedupeKey);
                 }
 
+                // Skip "No Data Available" vaccine names
+                if (!String.isBlank(imm.Vaccine_Name__c) && imm.Vaccine_Name__c.trim().equalsIgnoreCase('No Data Available')) {
+                    System.debug('⏭️ Skipping Immunization (No Data Available name): ' + immId);
+                    continue;
+                }
+
                 toInsert.add(imm);
             }
             

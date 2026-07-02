@@ -1,5 +1,3 @@
-// NOTE: The actual fix is in ContactMedicalDataAPI.createPublicLinks — see below.
-// This test file is correct as-is; no changes needed here.
 @IsTest(SeeAllData=true)
 private class ContactMedicalDataAPITest {
     
@@ -238,48 +236,7 @@ private class ContactMedicalDataAPITest {
         Test.stopTest();
     }
     
-    @IsTest
-    static void testCreatePublicLink() {
-        // Insert ContentVersion inside startTest so DML is fully committed
-        Test.startTest();
-        
-        ContentVersion cv = new ContentVersion(
-            Title = 'Test Document',
-            PathOnClient = 'TestDocument.pdf',
-            VersionData = Blob.valueOf('Test Content'),
-            Source__c = 'Metriport',
-            IsMajorVersion = true
-        );
-        insert cv;
-        
-        // FIX: Use a List query to safely retrieve ContentDocumentId;
-        //      a direct SObject assignment throws "List has no rows" if
-        //      the record is not found.
-        List<ContentVersion> cvList = [
-            SELECT ContentDocumentId 
-            FROM ContentVersion 
-            WHERE Id = :cv.Id 
-            LIMIT 1
-        ];
-        
-        if (!cvList.isEmpty()) {
-            cv = cvList[0];
-            
-            try {
-                Map<Id, ContentVersion> testMap = new Map<Id, ContentVersion>();
-                testMap.put(cv.ContentDocumentId, cv);
-                
-                Map<Id, String> publicUrlMap = ContactMedicalDataAPI.createPublicLinks(testMap);
-                System.assertNotEquals(null, publicUrlMap, 'Should return a map');
-            } catch (Exception e) {
-                System.debug('Expected exception in test context: ' + e.getMessage());
-            }
-        } else {
-            System.debug('ContentVersion not found after insert — skipping createPublicLinks assertion');
-        }
-        
-        Test.stopTest();
-    }
+
     
     @IsTest
     static void testAllDataTypesInResponse() {

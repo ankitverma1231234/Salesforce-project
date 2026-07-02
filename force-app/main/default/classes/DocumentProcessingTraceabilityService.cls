@@ -127,7 +127,7 @@ public without sharing class DocumentProcessingTraceabilityService {
             }
 
             List<ContentVersion> candidateVersions = [
-                SELECT Id, ContentDocumentId, Title, PathOnClient, Source__c, Related_File__c, FirstPublishLocationId
+                SELECT Id, ContentDocumentId, Title, PathOnClient, Source_Type__c, Related_File__c, FirstPublishLocationId
                 FROM ContentVersion
                 WHERE IsLatest = true
                 AND (Title IN :fileNames OR PathOnClient IN :fileNames)
@@ -154,15 +154,15 @@ public without sharing class DocumentProcessingTraceabilityService {
                 }
 
                 matchedByFileStorageId.put(fileStorage.Id, matchedVersion);
-                if (isMetriportSource(matchedVersion.Source__c)) {
+                if (isMetriportSource(matchedVersion.Source_Type__c)) {
                     mainContentVersionIds.add(matchedVersion.Id);
-                } else if (isAiSource(matchedVersion.Source__c) && matchedVersion.Related_File__c != null) {
+                } else if (isAiSource(matchedVersion.Source_Type__c) && matchedVersion.Related_File__c != null) {
                     aiRelatedMainContentDocumentIds.add(matchedVersion.Related_File__c);
                 } else {
                     System.debug(LoggingLevel.DEBUG,
-                        'Matched ContentVersion ignored because Source__c is not Metriport or AI. FileStorageId=' +
+                        'Matched ContentVersion ignored because Source_Type__c is not Metriport or AI. FileStorageId=' +
                         fileStorage.Id + ', ContentVersionId=' + matchedVersion.Id +
-                        ', Source=' + matchedVersion.Source__c
+                        ', Source=' + matchedVersion.Source_Type__c
                     );
                 }
             }
@@ -203,7 +203,7 @@ public without sharing class DocumentProcessingTraceabilityService {
             for (Id fileStorageId : matchedByFileStorageId.keySet()) {
                 ContentVersion matchedVersion = matchedByFileStorageId.get(fileStorageId);
 
-                if (isMetriportSource(matchedVersion.Source__c)) {
+                if (isMetriportSource(matchedVersion.Source_Type__c)) {
                     Document_Processing_Log__c existingLog = logByMainContentVersionId.get(matchedVersion.Id);
                     if (existingLog == null) {
                         System.debug(LoggingLevel.WARN,
@@ -216,7 +216,7 @@ public without sharing class DocumentProcessingTraceabilityService {
                     Document_Processing_Log__c logUpdate = getOrCreateLogUpdate(updatesByLogId, existingLog.Id);
                     logUpdate.Main_Content_Document_Id__c = String.valueOf(matchedVersion.ContentDocumentId);
                     logUpdate.Main_File_Storage_Record_Id__c = String.valueOf(fileStorageId);
-                } else if (isAiSource(matchedVersion.Source__c) && matchedVersion.Related_File__c != null) {
+                } else if (isAiSource(matchedVersion.Source_Type__c) && matchedVersion.Related_File__c != null) {
                     ContentVersion mainVersion = latestMainVersionByDocumentId.get(matchedVersion.Related_File__c);
                     if (mainVersion == null) {
                         System.debug(LoggingLevel.WARN,

@@ -505,19 +505,18 @@ public class GeminiFileInsightsControllerTest {
         Test.stopTest();
     }
 
-    /** Salesforce maps .txt → FileType=TEXT, which the controller does not
-     *  treat as a text-extraction-supported type, so it throws. */
+    /** Salesforce maps .txt to FileType=TEXT,
+     *  and the controller should treat it as text content. */
     @isTest
-    static void testGenerateFullAnalysis_ForceRegenerate_TXT_ThrowsUnsupported() {
+    static void testGenerateFullAnalysis_ForceRegenerate_TXT_Success() {
         ensureGeminiSettings();
         Test.setMock(HttpCalloutMock.class, new GeminiMock());
         ContentVersion cv = createTestFile('GenForceTxt', 'TXT', 'Chief complaint: chronic headache.');
-        Boolean caught = false;
         Test.startTest();
-        try { GeminiFileInsightsController.generateFullAnalysis(cv.ContentDocumentId, true, false); }
-        catch (AuraHandledException e) { caught = true; }
+        String result = GeminiFileInsightsController.generateFullAnalysis(cv.ContentDocumentId, true, false);
         Test.stopTest();
-        System.assert(caught, 'TXT files map to FileType=TEXT and are not extracted by the controller');
+        System.assertNotEquals(null, result);
+        System.assert(result.contains('summary'));
     }
 
     /** CSV is the canonical text type that succeeds end-to-end. */

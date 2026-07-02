@@ -3,71 +3,146 @@
         <lightning-button-icon
             icon-name={iconName}
             variant={variant}
-            size={iconSize}
             alternative-text={effectiveButtonLabel}
             title={effectiveButtonLabel}
             disabled={isButtonDisabled}
             onclick={handleOpenUpload}>
         </lightning-button-icon>
     </template>
-
     <template if:false={iconOnly}>
         <lightning-button
             label={effectiveButtonLabel}
-            variant={variant}
             icon-name={iconName}
             icon-position={iconPosition}
+            variant={variant}
             disabled={isButtonDisabled}
             onclick={handleOpenUpload}>
         </lightning-button>
     </template>
 
     <template if:true={showUploadModal}>
-        <section role="dialog"
-                 tabindex="-1"
-                 aria-modal="true"
-                 aria-labelledby="afu-modal-heading"
-                 class="slds-modal slds-fade-in-open">
+        <section
+            role="dialog"
+            tabindex="-1"
+            aria-modal="true"
+            aria-labelledby="upload-modal-heading"
+            class="slds-modal slds-fade-in-open">
             <div class="slds-modal__container">
 
+                <!-- Header -->
                 <header class="slds-modal__header">
                     <button
                         class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
                         title="Close"
-                        onclick={handleCloseUpload}>
+                        onclick={handleCloseUpload}
+                        disabled={isUploading}>
                         <lightning-icon icon-name="utility:close" alternative-text="Close" size="small"></lightning-icon>
                     </button>
-                    <h2 id="afu-modal-heading" class="slds-modal__title slds-hyphenate">
-                        {modalTitle}
-                    </h2>
+                    <h2 id="upload-modal-heading" class="slds-modal__title">{modalTitle}</h2>
                 </header>
 
-                <div class="slds-modal__content slds-p-around_medium afu-modal-body">
+                <!-- Body -->
+                <div class="slds-modal__content slds-p-around_medium">
+
                     <template if:true={isUploading}>
-                        <div class="afu-spinner-wrap">
-                            <lightning-spinner alternative-text="Uploading file..." size="medium"></lightning-spinner>
+                        <div class="slds-is-relative spinner-container">
+                            <lightning-spinner alternative-text="Saving..." size="medium"></lightning-spinner>
                         </div>
                     </template>
 
-                    <p class="slds-text-body_small slds-text-color_weak slds-m-bottom_small">
-                        {helpText}
-                    </p>
+                    <!-- File Upload -->
+                    <div class="slds-form-element slds-m-bottom_medium">
+                        <lightning-file-upload
+                            label="Choose File"
+                            name="fileUploader"
+                            accept={acceptedFormatList}
+                            record-id={recordId}
+                            multiple={allowMultiple}
+                            onuploadfinished={handleUploadFinished}>
+                        </lightning-file-upload>
+                        <template if:true={hasUploadedFiles}>
+                            <p class="slds-m-top_x-small slds-text-body_small slds-text-color_success">
+                                <lightning-icon icon-name="utility:check" size="xx-small" class="slds-m-right_xx-small"></lightning-icon>
+                                {uploadedFileName}
+                            </p>
+                        </template>
+                    </div>
 
-                    <lightning-file-upload
-                        label="Select files to upload"
-                        name="afu-file-uploader"
-                        accept={acceptedFormatList}
-                        record-id={recordId}
-                        multiple={allowMultiple}
-                        onuploadfinished={handleUploadFinished}>
-                    </lightning-file-upload>
+                    <!-- Title -->
+                    <div class="slds-form-element slds-m-bottom_medium">
+                        <lightning-input
+                            type="text"
+                            label="Title"
+                            value={formTitle}
+                            placeholder="Title"
+                            required
+                            onchange={handleFieldChange}
+                            data-field="formTitle">
+                        </lightning-input>
+                    </div>
+
+                    <!-- Source Type -->
+                    <div class="slds-form-element slds-m-bottom_medium">
+                        <lightning-combobox
+                            label="Source Type"
+                            value={formSourceType}
+                            placeholder="Select source type..."
+                            options={sourceTypeOptions}
+                            onchange={handleFieldChange}
+                            data-field="formSourceType">
+                        </lightning-combobox>
+                    </div>
+
+                    <!-- Category -->
+                    <div class="slds-form-element slds-m-bottom_medium">
+                        <lightning-combobox
+                            label="Category"
+                            value={formCategory}
+                            placeholder="Select category..."
+                            options={categoryOptions}
+                            onchange={handleFieldChange}
+                            data-field="formCategory">
+                        </lightning-combobox>
+                    </div>
+
+                    <!-- Date of Service -->
+                    <div class="slds-form-element slds-m-bottom_medium">
+                        <lightning-input
+                            type="date"
+                            label="Date of Service"
+                            value={formServiceDate}
+                            onchange={handleFieldChange}
+                            data-field="formServiceDate">
+                        </lightning-input>
+                    </div>
+
+                    <!-- Description -->
+                    <div class="slds-form-element">
+                        <lightning-textarea
+                            label="Description"
+                            value={formDescription}
+                            placeholder="Description"
+                            max-length="500"
+                            onchange={handleFieldChange}
+                            data-field="formDescription">
+                        </lightning-textarea>
+                    </div>
+
                 </div>
 
+                <!-- Footer -->
                 <footer class="slds-modal__footer">
                     <lightning-button
-                        label="Close"
-                        variant="neutral"
-                        onclick={handleCloseUpload}>
+                        label="Cancel"
+                        onclick={handleCloseUpload}
+                        disabled={isUploading}
+                        class="slds-m-right_x-small">
+                    </lightning-button>
+                    <lightning-button
+                        label="Save"
+                        variant="brand"
+                        onclick={handleSave}
+                        disabled={isSaveDisabled}>
                     </lightning-button>
                 </footer>
 
