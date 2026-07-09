@@ -1,0 +1,69 @@
+name: Salesforce Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-sandbox:
+    name: Deploy to UAT Sandbox
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Salesforce CLI
+        run: npm install @salesforce/cli --global
+
+      - name: Create JWT Key
+        run: |
+          echo "${{ secrets.JWT_KEY }}" > server.key
+
+      - name: Authenticate Sandbox
+        run: |
+          sf org login jwt \
+            --client-id ${{ secrets.SANDBOX_CLIENT_ID }} \
+            --jwt-key-file server.key \
+            --username ${{ secrets.SANDBOX_USERNAME }} \
+            --instance-url https://test.salesforce.com
+
+      - name: Deploy to Sandbox
+        run: |
+          sf project deploy start \
+            --target-org ${{ secrets.SANDBOX_USERNAME }} \
+            --test-level RunLocalTests
+
+  deploy-production:
+    name: Deploy to Production
+    needs: deploy-sandbox
+    runs-on: ubuntu-latest
+
+    # GitHub Environment (Manual Approval)
+    environment: Production
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Salesforce CLI
+        run: npm install @salesforce/cli --global
+
+      - name: Create JWT Key
+        run: |
+          echo "${{ secrets.JWT_KEY }}" > server.key
+
+      - name: Authenticate Production
+        run: |
+          sf org login jwt \
+            --client-id ${{ secrets.PROD_CLIENT_ID }} \
+            --jwt-key-file server.key \
+            --username ${{ secrets.PROD_USERNAME }} \
+            --instance-url https://login.salesforce.com
+
+      - name: Deploy to Production
+        run: |
+          sf project deploy start \
+            --target-org ${{ secrets.PROD_USERNAME }} \
+            --test-level RunLocalTests
