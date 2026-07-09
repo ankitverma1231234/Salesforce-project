@@ -14,7 +14,7 @@ public class AccountOnboardingInvocable {
                 
                 // Construct the onboarding URL
                 String onboardingUrl = 'https://portal.batoncare.com/member-onboarding?id=' + acc.PersonContactId;
-                System.debug('Github>>');
+                System.debug('Github>> update');
                 
                 acc.Onboarding_URL__c = onboardingUrl;
                 accountsToUpdate.add(acc);
