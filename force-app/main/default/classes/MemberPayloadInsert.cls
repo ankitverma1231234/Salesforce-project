@@ -1,4 +1,4 @@
-public class MemberPayloadInsert {
+public with sharing class MemberPayloadInsert {
     public static void handle(List<Member_Payload__c> newRecords) {
 
         List<Member_Payload__c> validRecords = new List<Member_Payload__c>();
