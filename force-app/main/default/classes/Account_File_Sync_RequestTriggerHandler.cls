@@ -1,4 +1,4 @@
-public without Sharing class Account_File_Sync_RequestTriggerHandler {
+public with Sharing class Account_File_Sync_RequestTriggerHandler {
  
     public static void handle(List<Account_File_Sync_Request__e> events) {
         List<String> contentVersionIds = new List<String>();
